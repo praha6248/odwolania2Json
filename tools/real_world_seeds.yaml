@@ -1,0 +1,201 @@
+# Public documents used by tools/real_world_test.py to test the application on real-world input.
+# The PDFs themselves are never committed (personal data, third-party copyright); they are downloaded to data_real/.
+#
+# expect: the document type the application should recognise (odwolanie, pelnomocnictwo, przelew) or "none"
+#         for look-alike documents that must get an empty JSON.
+# values: hand-checked values of the output JSON, keyed by path (e.g. Odwolujacy[0].nazwa). Only values that were
+#         verified by reading the PDF are listed; a value of null means the document really does not contain it.
+#         Text longer than 30 characters is compared with the UZP rule (similarity >= 0.8). Values that carry a
+#         person's name are stored as sha256:<first 16 hex digits of the SHA-256 of the exact UTF-8 value>.
+
+kio_sample: {start: 6000, end: 36000, count: 30}   # evenly spaced KIO rulings (look-alike negatives)
+
+documents:
+  # --- Appeals published by contracting authorities (copies forwarded to bidders under art. 514 Pzp) ---
+  - id: odw_imielin_bes_2022
+    url: https://bip.imielin.pl/files/files/2022/rowy%202022/Rowy%202/2022.06.06%20Odwo%C5%82anie.BES.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2022-06-06"
+      OdwolanieKIO.miejscowosc: Kraków
+      OdwolanieKIO.czynnosc_dzien: "2022-06-01"          # "Zamawiający przekazał ... informację ... w dniu 1 czerwca 2022 r."
+      OdwolanieKIO.czynnosc_powod_id: 7                  # "zaniechanie czynności odrzucenia oferty wykonawcy Berylbola"
+      Odwolujacy[0].nazwa: sha256:b3a1779c7c5f132b
+      Odwolujacy[0].nip: "6462881334"
+      Odwolujacy[0].pelnomocnik.imie_nazwisko: sha256:1c7da79ceaabeed6
+      Zamawiajacy[0].nazwa: Miasto Imielin
+      ZamowieniePubliczne.numer_postepowania: GK.271.16.2022
+      ZamowieniePubliczne.numer_bzp: 2022/BZP00151734/01  # body: "w Biuletynie Zamówień Publicznych ... pod numerem 2022/BZP 00151734/01"
+      ZamowieniePubliczne.tytul: Roboty związane z utrzymaniem i konserwacją rowów na terenie Miasta Imielin w 2022 roku
+  - id: odw_knf_galaxy_2025
+    url: https://www.knf.gov.pl/knf/pl/komponenty/img/Odwo%C5%82anie%20KNFGalaxy24_93491.04_93491.2025_93491.pdf
+    expect: odwolanie
+  - id: odw_knf_uknf_2026
+    url: https://www.knf.gov.pl/knf/pl/komponenty/img/Odwo%C5%82anie%20UKNF_97775.pdf
+    expect: odwolanie
+  - id: odw_otwock_catering_2024
+    url: https://www.otwock-szpital.pl/wp-content/uploads/2024/07/Odwolanie-Mazowieckie-Centrum-Leczenia-Chorob-Pluc-i-Gruzlicy.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2024-08-05"
+      OdwolanieKIO.miejscowosc: Łódź
+      OdwolanieKIO.czynnosc_powod_id: 12                 # "zaniechanie zastrzeżenia w załączniku nr 5 do SWZ - projekcie umowy - zasad ..."
+      Odwolujacy[0].nazwa: Naprzód Catering spółka z ograniczoną odpowiedzialnością
+      Odwolujacy[0].krs: "0000601008"
+      Odwolujacy[0].nip: "6772398589"
+      Odwolujacy[0].pelnomocnik.imie_nazwisko: sha256:aeaf33b55f693b47   # "reprezentowana przez pracownika – <imię i nazwisko>"
+      Zamawiajacy[0].nip: "5321664002"
+      Zamawiajacy[0].krs: "0000080790"
+      ZamowieniePubliczne.numer_ted: 444695-2024        # "w Suplemencie do Dziennika Urzędowego Unii Europejskiej w dniu ... pod numerem: 444695-2024"
+      ZamowieniePubliczne.numer_postepowania: null
+  - id: odw_zwps_marfour_2022
+    url: https://zwps.pl/portal/wp-content/uploads/2022/10/ODWO%C5%81ANIE-MAR-FOUR.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2022-11-15"
+      OdwolanieKIO.miejscowosc: Konstantynów Łódzki
+      OdwolanieKIO.czynnosc_dzien: "2022-11-10"
+      OdwolanieKIO.czynnosc_powod_id: 2
+      Odwolujacy[0].nazwa: sha256:8d6b11735c19632b      # the next line is the address
+      Odwolujacy[0].pelnomocnik.imie_nazwisko: sha256:03857e5cac1535b7   # genitive in the text: "reprezentowany przez: <imię w dopełniaczu> – pracownika"
+      Zamawiajacy[0].nazwa: Zespół Wojewódzkich Przychodni Specjalistycznych w Katowicach
+      ZamowieniePubliczne.numer_postepowania: ZP/D/8/22   # "Numer sprawy: ZP / D / 8 / 22."
+      ZamowieniePubliczne.numer_bzp: 2022/BZP00394256/01
+      ZamowieniePubliczne.tytul: Zakup 3 mikrotomów saneczkowych oraz 2 łaźni wodnych dla Pracowni Patomorfologii Zespołu Wojewódzkich Przychodni Specjalistycznych w Katowicach
+  - id: odw_wody_2024
+    url: https://przetargi.wody.gov.pl/wp/postepowania-przetargow/download/129387,Tresc-odwolania.html
+    expect: odwolanie
+  - id: odw_wody_lojewo_2021
+    url: https://przetargi.wody.gov.pl/wp/postepowania-przetargow/download/50184,Odwolanie.html
+    expect: odwolanie
+  - id: odw_kck_kielce_2022
+    url: https://www.kck.com.pl/wp-content/uploads/2022/03/Informacja_cd.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2022-03-16"
+      OdwolanieKIO.miejscowosc: Wrocław
+      OdwolanieKIO.czynnosc_dzien: "2022-03-11"
+      OdwolanieKIO.czynnosc_powod_id: 4                  # "składamy odwołanie wobec treści ogłoszenia o zamówieniu oraz postanowień specyfikacji istotnych warunków zamówienia"
+      Odwolujacy[0].nazwa: Impel S.A.
+      Odwolujacy[0].krs: "0000004185"
+      Odwolujacy[0].nip: "8990106769"
+      Zamawiajacy[0].nazwa: Kieleckie Centrum Kultury
+      ZamowieniePubliczne.numer_postepowania: ZP-KCK/13/2022   # "(znak postępowania: ZP-KCK/13/2022)"
+      ZamowieniePubliczne.numer_bzp: 2022/BZP00083500/01
+      ZamowieniePubliczne.tytul: Ochrona fizyczna osób i mienia Kieleckiego Centrum Kultury oraz Obsługa Urządzeń Ochrony Technicznej
+  - id: odw_praga_tronus_2020
+    url: https://szpzlo.praga-pld.pl/przetargi/20/09/odwolanie.pdf
+    expect: odwolanie
+  - id: odw_sosnicowice_sanito_2021
+    url: https://fs.siteor.com/sosnicowice/article_attachments/attachments/253471/original/2021_03_29_Odwo%C5%82anie_Sanito(3).pdf?1625473391=
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2021-03-29"
+      OdwolanieKIO.miejscowosc: Warszawa
+      OdwolanieKIO.czynnosc_dzien: "2021-03-24"
+      OdwolanieKIO.czynnosc_powod_id: 3
+      Odwolujacy[0].nazwa: Sanito Sp. z o.o.
+      Odwolujacy[0].nip: "5252495386"
+      Odwolujacy[0].krs: "0000372492"
+      Odwolujacy[0].pelnomocnik.imie_nazwisko: sha256:57a2c3abcd5ecaf9           # accusative in the text: "r.pr. <imię w bierniku>"
+      Odwolujacy[0].pelnomocnik.nazwa: Dentons Europe Dąbrowski i Wspólnicy sp. k.   # next line is "ul. Zajęcza 4, ..."
+      Odwolujacy[0].pelnomocnik.mail: sha256:d3ac9d1ed8e75d84
+      Zamawiajacy[0].nazwa: Gmina Sośnicowice
+      ZamowieniePubliczne.numer_postepowania: ZP-4/2020
+      ZamowieniePubliczne.tytul: Odnawialne źródła energii na terenie Gminy Sośnicowice
+  - id: odw_wielkopolski_kamsoft_2020
+    url: https://szpitalewielkopolski.pl/wp-content/uploads/2020/09/SzW_2_2020_Odwolanie_Kamsoft.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2020-09-17"                    # "Katowice, dnia 2020-09-17"
+      OdwolanieKIO.miejscowosc: Katowice
+      Odwolujacy[0].nazwa: KAMSOFT S.A.
+      Zamawiajacy[0].nazwa: Województwo Wielkopolskie
+      Zamawiajacy[1].nazwa: Centrum Rehabilitacji im. Prof. Mieczysława Walczaka w Osiecznej   # 14 joint contracting authorities
+      ZamowieniePubliczne.numer_postepowania: SzW/2/2020
+      ZamowieniePubliczne.numer_ted: 417752-2020
+      ZamowieniePubliczne.tytul: Dostawa, instalacja i wdrożenie Lokalnego Oprogramowania Komunikacyjnego oraz dostawa Systemu Autoryzacji - ETAP I
+  - id: odw_lapy_roche_2022
+    url: https://szpitallapy.pl/wp-content/uploads/2023/01/2022.12.27.-Odwo%C5%82anie-Roche-%C5%81apy.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2022-12-27"
+      OdwolanieKIO.miejscowosc: Warszawa
+      OdwolanieKIO.czynnosc_dzien: "2022-12-14"          # "Zamawiający w dniu 14 grudnia 2022 r. poinformował Odwołującego o odrzuceniu jego oferty"
+      OdwolanieKIO.czynnosc_powod_id: 1
+      Odwolujacy[0].nazwa: Roche Diagnostics Polska sp. z o.o.
+      Odwolujacy[0].nip: "5272322068"
+      Odwolujacy[0].krs: "0000132695"
+      Odwolujacy[0].pelnomocnik.imie_nazwisko: sha256:9cce739b44aee407           # genitive in the text: "reprezentowany przez r.pr. <imię w dopełniaczu>"
+      Odwolujacy[0].pelnomocnik.nazwa: sha256:5726db7bcf3c3de8
+      Zamawiajacy[0].nazwa: Samodzielny Publiczny Zakład Opieki Zdrowotnej w Łapach
+      ZamowieniePubliczne.numer_postepowania: ZP/69/2022/PN
+      ZamowieniePubliczne.numer_ted: 500295-2022         # "w Dzienniku Urzędowym Unii Europejskiej ... pod nr 2022/S 177-500295"
+      ZamowieniePubliczne.tytul: Zakup, dostawa i instalacja sprzętu medycznego na potrzeby Działu Diagnostyki Laboratoryjnej SP ZOZ w Łapach
+  - id: odw_kolno_catermed_2021
+    url: https://www.szpitalkolno.pl/userfiles/file/przetargi_2021/3/Kopia%20odwo%C5%82ania%20Catermed%20S_A_%20oraz%20Naprz%C3%B3d%20Catering%20Sp_%20z%20o_o.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2021-05-24"
+      OdwolanieKIO.miejscowosc: Łódź
+      OdwolanieKIO.czynnosc_powod_id: 2
+      Odwolujacy[0].nazwa: CATERMED Spółka Akcyjna       # consortium leader, listed as "1. CATERMED Spółka Akcyjna"
+      Odwolujacy[0].krs: "0000410889"
+      Odwolujacy[0].pelnomocnik.imie_nazwisko: sha256:959d3e7af9a70df1   # "reprezentowana przez pracownika – <imię i nazwisko>"
+      Zamawiajacy[0].nazwa: Szpital Ogólny w Kolnie
+      Zamawiajacy[0].krs: "0000059112"
+      ZamowieniePubliczne.numer_postepowania: Sz.O./ZP/03/2021
+      ZamowieniePubliczne.numer_bzp: 2021/BZP00023213/01
+      ZamowieniePubliczne.tytul: Świadczenie usług gastronomicznych dla Szpitala Ogólnego w Kolnie
+  - id: odw_ketrzyn_sinmed_2022
+    url: https://www.szpital-ketrzyn.pl/images/przetargi/12TP2022/Odwolanie.pdf
+    expect: odwolanie
+    values:
+      OdwolanieKIO.data: "2022-05-31"
+      OdwolanieKIO.miejscowosc: Przyszowice
+      OdwolanieKIO.czynnosc_dzien: "2022-05-27"          # "Wiadomość o okolicznościach ... Odwołujący powziął w dniu 27.05.2022 r."
+      OdwolanieKIO.czynnosc_powod_id: 2
+      Odwolujacy[0].nazwa: Sinmed Sp. z o. o.
+      Odwolujacy[0].nip: "6312665250"
+      Odwolujacy[0].krs: "0000636444"
+      Zamawiajacy[0].nazwa: SPZOZ Szpital Powiatowy w Kętrzynie
+      ZamowieniePubliczne.numer_postepowania: 12/TP/2022
+      ZamowieniePubliczne.numer_bzp: 2022/BZP00112366
+      ZamowieniePubliczne.tytul: Dostawa artykułów anestezjologicznych i respiracyjnych do Szpitala Powiatowego w Kętrzynie
+
+  # --- Power of attorney guide with blank sample forms (placeholders only, so it must be rejected) ---
+  - id: neg_apexnet_pelnomocnictwo_poradnik
+    url: https://www.apexnet.com.pl/edustrefa/pobierz-plik/?id=3443
+    expect: none
+
+  # --- Look-alike documents that must NOT be recognised ---
+  - id: neg_apexnet_odpowiedz_na_odwolanie
+    url: https://www.apexnet.com.pl/edustrefa/pobierz-plik/?id=3441
+    expect: none
+  - id: neg_uzp_przystapienie_wzor
+    url: https://www.uzp.gov.pl/__data/assets/pdf_file/0021/53076/zgloszenie-przystapienia-do-postepowania-odwolawczego.pdf
+    expect: none
+  - id: neg_kio_wyrok_1486_26
+    url: https://orzeczenia.uzp.gov.pl/Home/PdfContent/34566?Kind=KIO
+    expect: none
+  - id: neg_kio_postanowienie_2600_24
+    url: https://orzeczenia.uzp.gov.pl/Home/PdfContent/21807?Kind=KIO
+    expect: none
+  - id: neg_kio_postanowienie_prezesa_zwrot
+    url: https://orzeczenia.uzp.gov.pl/Home/PdfContent/20193?Kind=KIO
+    expect: none
+  - id: neg_kio_postanowienie_prezesa_2
+    url: https://orzeczenia.uzp.gov.pl/Home/PdfContent/31008?Kind=KIO
+    expect: none
+  - id: neg_kio_wyrok_us_edu
+    url: https://dzp.us.edu.pl/wp-content/uploads/2025/01/Razaco-niska-cena-KIO-3214-24.pdf
+    expect: none
+  - id: neg_so_warszawa_wyrok
+    url: https://bip.warszawa.so.gov.pl/attachments/download/20587
+    expect: none
+  - id: neg_ted_ogloszenie_2024
+    url: https://ted.europa.eu/en/notice/021789-2024/pdf
+    expect: none
+  - id: neg_ted_pec_belchatow
+    url: https://pec-belchatow.pl/wp-content/uploads/2022/11/sieci_2022-OJS223-640800-pl.pdf
+    expect: none
