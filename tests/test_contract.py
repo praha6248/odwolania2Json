@@ -57,3 +57,10 @@ def test_cli_extract_reports_unmatched_type():
     """The CLI prints the reason on stderr and exits with code 2 for an unmatched document."""
     run = subprocess.run([sys.executable, "-m", "odwolania2json", "extract", str(NEGATIVE)], capture_output=True, text=True)
     assert run.returncode == 2 and run.stdout == "" and "Nie udało się dopasować typu" in run.stderr
+
+
+@pytest.mark.parametrize("pdf", sorted((Path(__file__).parent / "fixtures_negative").glob("*.pdf")), ids=lambda p: p.name)
+def test_lookalike_documents_are_not_classified(processor, pdf):
+    """KIO rulings, UZP guides and TED notices use appeal vocabulary but must not get a type."""
+    result = processor.process_pdf(pdf)
+    assert result.doc_type is None, result.classification.scores

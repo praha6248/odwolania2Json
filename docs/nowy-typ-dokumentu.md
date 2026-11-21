@@ -19,6 +19,12 @@ classify:
     krajowa izba odwoławcza: 1
   filename_hints:
     wezwanie: 3
+  require:
+    - name: sygnatura KIO
+      scope: all
+      any: ['KIO\s*\d+/\d{2}']
+  negative:
+    '^\s*(?:WYROK|POSTANOWIENIE)\s*$': 30
 
 sections:
   naglowek:
@@ -80,7 +86,7 @@ python -m odwolania2json eval katalog_z_przykladami         # F1, gdy są pliki 
 |---|---|
 | `name` | identyfikator typu (używany w API i UI) |
 | `label` | nazwa wyświetlana |
-| `classify` | wagi słów i wzorców; dokument dostaje typ o najwyższej sumie, jeśli przekracza próg `min_classification_score` |
+| `classify` | wagi słów i wzorców; dokument dostaje typ o najwyższej sumie, jeśli przekracza próg `min_classification_score`. `require`: warunki konieczne (`any`: lista wzorców, `scope`: `head` albo `all`); niespełniony oznacza 0 pkt. `negative`: wzorce cech innych dokumentów (np. `WYROK`, `Sygn. akt`) odejmujące punkty |
 | `sections` | nazwane fragmenty dokumentu: `start`, `end` (regex lub lista), `include_start`, `max_chars` |
 | `fields` | pola: `extract` (łańcuch ekstraktorów), `normalize`, `default`, `description` (opis dla człowieka i LLM) |
 | `llm.fields` | pola, które model może uzupełnić, gdy reguły zostawią je puste |

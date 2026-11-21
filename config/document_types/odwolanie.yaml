@@ -17,6 +17,16 @@ classify:
   filename_hints:
     odwolanie: 4
     odwołanie: 4
+  require:
+    - name: etykieta strony "Odwołujący:" w nagłówku
+      any: ['^\s*Odwołując\w*\s*:']
+  negative:
+    '^\s*Sygn\.?\s*akt': 30
+    '^\s*(?:WYROK|POSTANOWIENIE|UCHWAŁA|ZARZĄDZENIE)\s*$': 30
+    'Krajowa\s+Izba\s+Odwoławcza\s*[-–]?\s*w\s+składzie': 30
+    '^\s*Przewodnicząc\w*\s*:': 20
+    '^\s*Protokolant\w*\s*:': 20
+    '^\s*(?:orzeka|postanawia)\s*:': 20
 
 sections:
   header:
