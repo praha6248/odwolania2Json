@@ -73,6 +73,13 @@ def strip(value: str) -> str | None:
     return value or None
 
 
+@normalizer("reference")
+def reference(value: str) -> str | None:
+    """Join a reference number written with spaced separators ('ZP / D / 8 / 22' -> 'ZP/D/8/22')."""
+    text = re.sub(r"\s*/\s*", "/", str(value)).strip()
+    return text or None
+
+
 @normalizer("strip_quotes")
 def strip_quotes(value: str) -> str:
     """Remove surrounding typographic and ASCII quotes."""

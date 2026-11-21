@@ -16,6 +16,41 @@ wyrok sądu okręgowego, wzór odpowiedzi na odwołanie i poradnik z pustymi wzo
 **Ekstrakcja pól jest wyraźnie słabsza niż deklarowane F1 = 1.000** na zbiorze UZP: prawdziwe pisma mają inne
 sformułowania i układ niż dane treningowe. Poniżej 14 błędów z przyczyną w kodzie lub konfiguracji.
 
+## Stan po poprawkach
+
+Błędy 1–13 są poprawione na tej samej gałęzi; 14 i punkty „do decyzji” pozostają otwarte.
+
+| Miara | Przed | Po |
+|---|---|---|
+| Ręcznie sprawdzone wartości (9 prawdziwych odwołań) | 76/99 | **99/99** |
+| Rozpoznanie typu (47 dokumentów) | 47/47 | 47/47 |
+| 150 syntetycznych spraw (`tools/generate_testset.py --seed 2026`), TP/FP/FN | 4878/0/1 | 4878/0/1 |
+| Testy `pytest` | 59 | 67 (nowy plik `tests/test_real_world_phrasing.py`) |
+
+Zastrzeżenia:
+- Poprawki były dopasowywane do tych samych 9 odwołań, więc 99/99 nie jest wynikiem na danych niewidzianych.
+  Nowych odwołań do sprawdzenia nie udało się znaleźć (dwa adresy KNF już nie istnieją).
+- Zbioru treningowego UZP nie ma w repozytorium; sprawdzone są tylko dwa dołączone przykłady (`tests/fixtures`) i zbiór
+  syntetyczny. Przykład 41 zawiera pułapkę: w uzasadnieniu cytowany jest numer BZP innego, wcześniejszego postępowania.
+  Dlatego numery BZP i TED spoza nagłówka są brane tylko z początku pisma (przed „UZASADNIENIE”, najwyżej 6000 znaków)
+  i tylko ze zdań opisujących ogłoszenie tego postępowania.
+- Imię i nazwisko po „przez” jest sprowadzane do mianownika tylko wtedy, gdy odmiana jest pewna (zmienia się nazwisko
+  albo wyraz kończy się na -ę/-ą). „Kamila Nowak” zostaje bez zmian, ale np. „Kamila Kozera” mogłaby zostać zmieniona błędnie.
+
+Co zmieniono:
+- [engine.py](../odwolania2json/engine.py): lista sekcji w `scope` jest sprawdzana po kolei (błąd 1); opis w
+  [nowy-typ-dokumentu.md](nowy-typ-dokumentu.md) zaktualizowany.
+- [odwolanie.yaml](../config/document_types/odwolanie.yaml): nagłówek kończy się też na „Działając na podstawie”,
+  „wnosi/składamy odwołanie” i najpóźniej po 5000 znakach (wcześniej w części pism obejmował cały dokument); nowe sekcje
+  `intro`, `act_notice`, `act_statement`; numery BZP/TED z treści (2, 3); numer postępowania ze spacjami i „znak postępowania”
+  (4); data ISO (11); tytuł po „pn.”/„pt.” bez cudzysłowu (12); słowa kluczowe powodu (9) i daty czynności (10).
+- [extractors.py](../odwolania2json/extractors.py): mianownik po „przez” (5), pełnomocnik-pracownik (6), adres w nazwie
+  i nazwie kancelarii (7), numeracja „1.” (8), lista zamawiających bez numeracji (13).
+- [normalizers.py](../odwolania2json/normalizers.py): normalizator `reference` („ZP / D / 8 / 22” → „ZP/D/8/22”).
+
+Nie poprawione: błąd 14 (dołączanie odwołania bez numeru do sprawy po nazwie odwołującego mogłoby łączyć różne
+postępowania tej samej firmy; w zbiorze są dwa odwołania tej samej grupy firm) i pole „Przedstawiciel” z formularza UZP.
+
 ## Zbiór testowy
 
 - **9 prawdziwych odwołań** opublikowanych przez zamawiających (kopie przekazywane wykonawcom, art. 514 Pzp):
@@ -113,7 +148,7 @@ Drugi wzorzec `tytul` szuka „pn. „…”” w całym tekście i bierze pierw
 - ZWPS: „pt. Zakup 3 mikrotomów saneczkowych …” → null.
 
 ### 13. Wielu zamawiających (zamówienie wspólne)
-Kamsoft: 15 zamawiających w kolejnych liniach bloku „Zamawiający:”, w JSON jest tylko pierwszy („Województwo Wielkopolskie”).
+Kamsoft: 14 zamawiających w kolejnych liniach bloku „Zamawiający:”, w JSON jest tylko pierwszy („Województwo Wielkopolskie”).
 
 ### 14. Sprawy: odwołanie bez numeru postępowania nie dostaje kontroli formalnej
 `group_cases` ([cases.py](../odwolania2json/cases.py)) odkłada dokumenty bez `numer_postepowania` do grupy „bez numeru”,
