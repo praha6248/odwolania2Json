@@ -111,7 +111,10 @@ function go(view) {
   }
   state.view = view;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `view-${view}`));
-  document.querySelectorAll(".rail-btn").forEach((b) => {
+  $("#more-sheet").classList.add("hidden");
+  const secondary = ["types", "settings", "help"].includes(view);
+  $("#more-btn").classList.toggle("active", secondary);
+  document.querySelectorAll(".rail-btn[data-go]").forEach((b) => {
     const active = b.dataset.go === view;
     b.classList.toggle("active", active);
     if (active) b.setAttribute("aria-current", "page");
@@ -152,14 +155,14 @@ function renderTable() {
     const pct = fill === null ? null : Math.round(fill * 100);
     const review = reviewItems(d).length;
     return `<tr data-id="${d.id}" tabindex="0">
-      <td><div class="file-cell"><span class="file-icon ${d.doc_type || ""}">${ICON_DOC}</span>
+      <td class="cell-file"><div class="file-cell"><span class="file-icon ${d.doc_type || ""}">${ICON_DOC}</span>
         <div><div class="file-name">${esc(d.filename)}</div><div class="file-sub">${d.ocr ? "skan · OCR" : "PDF z tekstem"}${review ? ` · <span class="warn">${review} do weryfikacji</span>` : ""}</div></div></div></td>
-      <td><span class="chip ${d.doc_type || "none"}">${esc(d.doc_label)}</span></td>
-      <td><div class="cell-main" title="${esc(subject(d))}">${esc(subject(d))}</div></td>
-      <td><span class="mono">${esc(procedure(d))}</span></td>
-      <td>${pct === null ? '<span class="muted">—</span>' : `<div class="meter"><div class="meter-bar"><span class="${pct < 80 ? "mid" : ""}" style="width:${pct}%"></span></div><span class="meter-val">${pct}%</span></div>`}</td>
-      <td class="muted">${d.seconds.toFixed(2)} s</td>
-      <td><div class="row-actions">
+      <td data-label="Typ"><span class="chip ${d.doc_type || "none"}">${esc(d.doc_label)}</span></td>
+      <td data-label="Podmiot"><div class="cell-main" title="${esc(subject(d))}">${esc(subject(d))}</div></td>
+      <td data-label="Postępowanie"><span class="mono">${esc(procedure(d))}</span></td>
+      <td data-label="Kompletność">${pct === null ? '<span class="muted">—</span>' : `<div class="meter"><div class="meter-bar"><span class="${pct < 80 ? "mid" : ""}" style="width:${pct}%"></span></div><span class="meter-val">${pct}%</span></div>`}</td>
+      <td class="muted cell-time" data-label="Czas">${d.seconds.toFixed(2)} s</td>
+      <td class="cell-actions"><div class="row-actions">
         <a class="icon-btn" href="/api/documents/${d.id}/json" title="Pobierz JSON" aria-label="Pobierz JSON ${esc(d.filename)}" data-stop>${ICON_DL}</a>
         <button class="icon-btn danger" data-del="${d.id}" title="Usuń dokument" aria-label="Usuń ${esc(d.filename)}" data-stop>${ICON_TRASH}</button></div></td>
     </tr>`;
@@ -708,6 +711,11 @@ function bind() {
   });
   $("#mode-switch").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
   $("#update-btn").addEventListener("click", openUpdate);
+  $("#more-btn").addEventListener("click", () => {
+    $("#more-sheet").classList.remove("hidden");
+    $("#more-sheet .sheet-item").focus();
+  });
+  $("#more-sheet").addEventListener("click", (e) => { if (e.target.id === "more-sheet") $("#more-sheet").classList.add("hidden"); });
   $("#update-close").addEventListener("click", () => $("#update-modal").classList.add("hidden"));
   $("#update-modal").addEventListener("click", (e) => { if (e.target.id === "update-modal") $("#update-modal").classList.add("hidden"); });
   $("#llm-save").addEventListener("click", saveLlm);
@@ -734,7 +742,7 @@ function bind() {
   $("#search").addEventListener("input", () => { if (state.view !== "list") go("list"); renderTable(); });
   $("#table-search").addEventListener("input", renderTable);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") $("#update-modal").classList.add("hidden");
+    if (e.key === "Escape") { $("#update-modal").classList.add("hidden"); $("#more-sheet").classList.add("hidden"); }
     if (e.key === "/" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) {
       e.preventDefault();
       $("#search").focus();
