@@ -117,7 +117,7 @@ async function applyRoute() {
   const [, name, id, tab] = (location.hash || "").split("/");
   const view = Object.keys(ROUTES).find((k) => ROUTES[k] === name);
   if (view === "detail" && id && state.docs.some((d) => d.id === id)) {
-    await openDoc(id);
+    await openDoc(id, true);
     const tabKey = Object.keys(TABS).find((k) => TABS[k] === tab);
     if (tabKey) showTab(tabKey);
   } else if (view && view !== "detail") {
@@ -285,8 +285,8 @@ function updateDoc(doc) {
   renderTable();
 }
 
-/** Open the detail view of a document. */
-async function openDoc(id) {
+/** Open the detail view of a document and show the guide notice that closes with OK. */
+async function openDoc(id, quiet = false) {
   const doc = await api(`/api/documents/${id}`);
   updateDoc(doc);
   $("#summary-card").classList.add("hidden");
@@ -294,6 +294,62 @@ async function openDoc(id) {
   state.tab = "json";
   go("detail");
   showTab("json");
+  if (!quiet) showDocNotice(doc);
+}
+
+/** Show a prominent modal summary of the opened document that closes only when the user clicks OK. */
+function showDocNotice(doc) {
+  const modal = $("#doc-modal");
+  if (!modal) return;
+  const fill = completeness(doc);
+  const pct = fill === null ? null : Math.round(fill * 100);
+  const review = reviewItems(doc);
+  const count = review.filter((f) => !state.reviewDone.has(`${doc.id}:${f.field}`)).length;
+  const source = doc.ocr ? `skan OCR (${esc(doc.ocr.engine)})` : "warstwa tekstowa PDF";
+  const chip = $("#doc-modal-chip");
+  const icon = $("#doc-modal-icon");
+  const secondary = $("#doc-modal-secondary");
+  chip.className = `chip ${doc.doc_type || "none"}`;
+  chip.textContent = doc.doc_label || "Spoza puli";
+  $("#doc-modal-file").textContent = `${doc.filename} · ${source} · ${doc.seconds.toFixed(2)} s`;
+
+  if (!doc.doc_type) {
+    icon.className = "doc-modal-icon warn";
+    icon.innerHTML = ICON_BAD;
+    $("#doc-modal-title").textContent = "Nie udało się dopasować typu dokumentu";
+    $("#doc-modal-body").innerHTML = `<p>${esc(doc.message || "Dokument nie pasuje do odwołania, pełnomocnictwa ani potwierdzenia przelewu.")}</p>
+      <div class="doc-modal-tips">
+        <div><b>Pusty JSON:</b> zgodnie z wymogami UZP dla dokumentu spoza skonfigurowanych typów wynikiem jest pusty obiekt <code>{}</code>.</div>
+        <div><b>Wymuszenie typu:</b> jeśli dokument należy do znanej kategorii, wybierz typ z listy w prawym górnym rogu karty wyniku.</div>
+      </div>`;
+    secondary.classList.add("hidden");
+  } else if (count > 0) {
+    icon.className = "doc-modal-icon warn";
+    icon.innerHTML = ICON_BAD;
+    $("#doc-modal-title").textContent = `${count} ${plural(count, "pole wymaga", "pola wymagają", "pól wymaga")} weryfikacji`;
+    $("#doc-modal-body").innerHTML = `<p>Rozpoznano <b>${esc(doc.doc_label)}</b> (kompletność pól: <b>${pct}%</b>). Część pól pozostała pusta, ma kilka pasujących wartości lub różni się od odczytu LLM.</p>
+      <div class="doc-modal-tips">
+        <div><b>Weryfikacja:</b> sprawdź wskazany fragment dokumentu i popraw lub zatwierdź wartość.</div>
+        <div><b>Źródła:</b> kliknij dowolne pole, aby podświetlić jego dokładne miejsce na stronie PDF po lewej.</div>
+      </div>`;
+    secondary.textContent = "Przejdź do weryfikacji";
+    secondary.classList.remove("hidden");
+    secondary.onclick = () => { modal.classList.add("hidden"); showTab("review"); };
+  } else {
+    icon.className = "doc-modal-icon ok";
+    icon.innerHTML = ICON_OK;
+    $("#doc-modal-title").textContent = `Dokument gotowy (${pct}% kompletności)`;
+    $("#doc-modal-body").innerHTML = `<p>Rozpoznano <b>${esc(doc.doc_label)}</b>. Wszystkie wymagane pola mają jednoznaczne źródło w dokumencie.</p>
+      <div class="doc-modal-tips">
+        <div><b>Podgląd i JSON:</b> po lewej stronie widzisz strony PDF, a po prawej gotowy wynik JSON zgodny ze schematem UZP.</div>
+        <div><b>Źródła w PDF:</b> otwórz zakładkę <b>Źródła</b> i kliknij dowolne pole, aby podświetlić wartość bezpośrednio na stronie dokumentu.</div>
+      </div>`;
+    secondary.textContent = "Pokaż źródła pól";
+    secondary.classList.remove("hidden");
+    secondary.onclick = () => { modal.classList.add("hidden"); showTab("fields"); };
+  }
+  modal.classList.remove("hidden");
+  $("#doc-modal-ok").focus();
 }
 
 /** Render every part of the detail view for the current document. */
@@ -598,6 +654,46 @@ function applyLlmState() {
   });
 }
 
+/** Highlight the preset card matching the current URL and model inputs. */
+function syncPresetHighlight() {
+  const url = ($("#llm-url")?.value || "").trim().replace(/\/+$/, "");
+  const model = ($("#llm-model")?.value || "").trim();
+  document.querySelectorAll("#llm-presets .preset-card").forEach((card) => {
+    const sameUrl = card.dataset.url.replace(/\/+$/, "") === url;
+    const sameModel = card.dataset.model === model;
+    card.classList.toggle("active", sameUrl && sameModel);
+  });
+}
+
+/** Update the visual connection status box in LLM settings. */
+function setLlmStatusBox(kind, title, detail) {
+  const box = $("#llm-check-box");
+  if (box) box.className = `llm-status-box ${kind}`;
+  const t = $("#llm-check-title");
+  if (t) t.textContent = title;
+  const out = $("#llm-check-out");
+  if (out) {
+    out.className = kind === "ok" ? "ok" : kind === "err" ? "err" : "muted";
+    out.innerHTML = detail;
+  }
+}
+
+/** Render discovered models from the endpoint as clickable chips and datalist options. */
+function renderDiscoveredModels(models = []) {
+  const list = $("#llm-models-list");
+  if (list) list.innerHTML = models.map((m) => `<option value="${esc(m)}">`).join("");
+  const box = $("#llm-discovered");
+  if (!box) return;
+  if (!models.length) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const current = ($("#llm-model")?.value || "").trim();
+  box.classList.remove("hidden");
+  box.innerHTML = `<span class="field-hint">Modele dostępne na serwerze (${models.length}):</span><div class="llm-model-chips">${models.slice(0, 12).map((m) => `<button type="button" class="chip ${m === current ? "ok" : "neutral"}" data-pick-model="${esc(m)}">${esc(m)}</button>`).join("")}</div>`;
+}
+
 /** Fill the LLM settings form from the server. */
 async function loadLlm() {
   state.llm = await api("/api/llm");
@@ -606,7 +702,8 @@ async function loadLlm() {
   $("#llm-url").value = state.llm.base_url;
   $("#llm-model").value = state.llm.model;
   $("#llm-key").value = "";
-  $("#llm-key-hint").textContent = state.llm.has_key ? "Klucz jest ustawiony." : "Brak klucza (niepotrzebny dla lokalnej Ollamy).";
+  $("#llm-key-hint").textContent = state.llm.has_key ? "Klucz API jest zapisany na serwerze." : "Brak zapisanego klucza (niepotrzebny dla lokalnej Ollamy / vLLM).";
+  syncPresetHighlight();
   applyLlmState();
 }
 
@@ -635,13 +732,16 @@ async function setMode(mode) {
 
 /** Test the LLM endpoint with the values currently in the form. */
 async function testLlm() {
-  const out = $("#llm-check-out");
-  out.className = "muted";
-  out.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle"></span> Testuję…';
+  setLlmStatusBox("testing", "Testowanie połączenia…", '<span class="spinner" style="display:inline-block;vertical-align:middle"></span> Sprawdzam listę modeli i próbne zapytanie JSON…');
   await send("/api/llm", "PUT", llmForm());
   const r = await api("/api/llm/check", { method: "POST" });
-  out.className = r.ok ? "ok" : "err";
-  out.textContent = r.ok ? `Działa: ${r.model}, odpowiedź w ${r.seconds} s.` : `Błąd: ${r.error}`;
+  if (r.ok) {
+    renderDiscoveredModels(r.models || []);
+    const count = (r.models || []).length;
+    setLlmStatusBox("ok", "Połączenie działa poprawnie", esc(`Model ${r.model} odpowiedział poprawnym JSON-em w ${r.seconds} s${count ? ` (dostępnych modeli na serwerze: ${count})` : ""}.`));
+  } else {
+    setLlmStatusBox("err", "Błąd połączenia z modelem", esc(`Błąd: ${r.error}`));
+  }
   await loadLlm();
 }
 
@@ -1050,7 +1150,7 @@ function bind() {
     if (!state.current) return;
     const q = e.target.value ? `?doc_type=${encodeURIComponent(e.target.value)}` : "";
     await api(`/api/documents/${state.current.id}/reprocess${q}`, { method: "POST" });
-    await openDoc(state.current.id);
+    await openDoc(state.current.id, true);
     refreshCases();
   });
   $("#btn-copy").addEventListener("click", copyJson);
@@ -1063,7 +1163,7 @@ function bind() {
   $("#answers").addEventListener("click", async (e) => {
     const s = e.target.closest(".source");
     if (!s) return;
-    await openDoc(s.dataset.doc);
+    await openDoc(s.dataset.doc, true);
     showTab("text");
     renderText(state.current, [Number(s.dataset.start), Number(s.dataset.end)]);
   });
@@ -1076,6 +1176,29 @@ function bind() {
   $("#more-sheet").addEventListener("click", (e) => { if (e.target.id === "more-sheet") $("#more-sheet").classList.add("hidden"); });
   $("#update-close").addEventListener("click", () => $("#update-modal").classList.add("hidden"));
   $("#update-modal").addEventListener("click", (e) => { if (e.target.id === "update-modal") $("#update-modal").classList.add("hidden"); });
+  $("#doc-modal-ok")?.addEventListener("click", () => $("#doc-modal").classList.add("hidden"));
+  $("#llm-presets")?.addEventListener("click", (e) => {
+    const card = e.target.closest(".preset-card");
+    if (!card) return;
+    $("#llm-url").value = card.dataset.url;
+    $("#llm-model").value = card.dataset.model;
+    $("#llm-enabled").checked = true;
+    $("#llm-enabled-label").textContent = "Włączony";
+    syncPresetHighlight();
+    if (card.dataset.needKey === "1" && !state.llm.has_key) $("#llm-key").focus();
+    toast(`Wybrano profil: ${card.querySelector("b").textContent}`);
+  });
+  $("#llm-discovered")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pick-model]");
+    if (!b) return;
+    $("#llm-model").value = b.dataset.pickModel;
+    syncPresetHighlight();
+    document.querySelectorAll("#llm-discovered [data-pick-model]").forEach((el) => {
+      el.className = `chip ${el.dataset.pickModel === b.dataset.pickModel ? "ok" : "neutral"}`;
+    });
+  });
+  $("#llm-url")?.addEventListener("input", syncPresetHighlight);
+  $("#llm-model")?.addEventListener("input", syncPresetHighlight);
   $("#llm-save").addEventListener("click", saveLlm);
   $("#llm-test").addEventListener("click", testLlm);
   $("#llm-enabled").addEventListener("change", (e) => { $("#llm-enabled-label").textContent = e.target.checked ? "Włączony" : "Wyłączony"; });

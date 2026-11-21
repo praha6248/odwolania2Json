@@ -38,12 +38,17 @@ OCR_FIXES = [
     (r"\bo\.0\.", "o.o."),
     (r"\bo\.0\b", "o.o"),
     (r"\bS\.A,", "S.A.,"),
-    (r"(?<=\d)O(?=\d)", "0"),
+    (r"(?<=\d)[oO](?=[\d./-])", "0"),
+    (r"(?<=[\d/\s])[oO](?=\d{2})", "0"),
     (r"(?<=PL)[oO](?=\d)", "0"),
     (r"(?<=PL\d)[oO]", "0"),
     (r"(?<=\d)[lI](?=\d)", "1"),
     (r"\bKRS[:.]?\s*(?=\d)", "KRS "),
     (r"\bNlP\b|\bNIp\b", "NIP"),
+    (r"(?<=Zespół\s)Szkot\b", "Szkół"),
+    (r"\bSzkot(?=\s+(?:Technicznych|Ogólnokształcących|Zawodowych|nr\b|im\.|w\b))", "Szkół"),
+    (r"\bJodtowsk", "Jodłowsk"),
+    (r"(?<=[A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż])·(?=[A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż])", " "),
 ]
 
 
@@ -94,8 +99,10 @@ def render_pages(path: Path, scale: float, pages: list[int] | None = None) -> li
     return [deskew(image) for image in images]
 
 
-LAYOUT_VERSION = 5
+LAYOUT_VERSION = 6
 LABEL = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ ]{2,30}:$")
+FLOAT_STOP = re.compile(r"(?i)^(?:tel\b|e-?mail|ul\.|al\.|pl\.|os\.|\d{2}-\d{3}|KRS\b|NIP\b|REGON\b)")
+PARTY_CAPTION = re.compile(r"(?i)^(?:odwo[lł]uj|zamawiaj|dotyczy|konsorcjum)")
 
 
 def _group_lines(items: list[tuple[float, float, float, float, str]]) -> list[list[tuple[float, float, float, float, str]]]:
@@ -127,6 +134,8 @@ def _float_labels(lines: list[list[tuple[float, float, float, float, str]]]) -> 
             while start > 0:
                 above = out[start - 1]
                 below_top = min(i[0] for i in out[start])
+                if FLOAT_STOP.match(" ".join(i[4] for i in above).strip()):
+                    break
                 if min(i[2] for i in above) <= head[3] or min(i[0] for i in above) < head[0] - 2.5 * height:
                     break
                 if abs(min(i[2] for i in above) - column) > 2 * height:
@@ -186,7 +195,11 @@ def _split_colon_columns(lines: list[Line]) -> list[Line]:
     index = 0
     while index < len(lines):
         line = lines[index]
-        if len(line) >= 2 and all(i[4].strip().endswith(":") and _is_caption(i[4]) for i in line):
+        if (
+            len(line) >= 2
+            and all(i[4].strip().endswith(":") and _is_caption(i[4]) for i in line)
+            and not any(PARTY_CAPTION.match(i[4].strip()) for i in line)
+        ):
             starts = [i[2] for i in line]
             height = _height(line)
             columns: list[list[Line]] = [[[item]] for item in line]
@@ -234,6 +247,8 @@ def _rapidocr_engine() -> Any:
     return RapidOCR(
         params={
             "Global.log_level": "warning",
+            "Det.thresh": 0.2,
+            "Det.box_thresh": 0.3,
             "Rec.lang_type": LangRec.LATIN,
             "Rec.ocr_version": OCRVersion.PPOCRV5,
             "Rec.model_type": ModelType.MOBILE,

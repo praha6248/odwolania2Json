@@ -21,7 +21,7 @@ classify:
     - name: etykieta strony "Odwołujący:" w nagłówku
       any: ['^[^\n]{0,60}?\bOdwołując\w*\s*\)?\s*:']
   negative:
-    '^\s*Sygn\.?\s*akt': 30
+    '^\s*Sygn\.?\s*akt\s*:?\s*KIO[^\n,]*$': 30
     '^\s*(?:WYROK|POSTANOWIENIE|UCHWAŁA|ZARZĄDZENIE)\s*$': 30
     'Krajowa\s+Izba\s+Odwoławcza\s*[-–]?\s*w\s+składzie': 30
     '^\s*Przewodnicząc\w*\s*:': 20
@@ -90,7 +90,7 @@ fields:
     description: Date of the challenged act from the first charge (ISO).
     extract:
       - type: dated_event
-        scope: [first_act_item, first_act_sentence]
+        scope: [first_act_item, first_act_sentence, appeal_against, charges_list, challenged_act]
         pattern: '((?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4}))'
 
   czynnosc_powod_id:

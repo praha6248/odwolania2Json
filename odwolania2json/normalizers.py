@@ -111,6 +111,10 @@ def date_iso(value: str) -> str | None:
         month = MONTHS.get(month_name) or ROMAN.get(month_name)
         if month:
             return _iso(year, month, day)
+    match = re.search(r"(\d{1,2})\s+(\d{1,2})\s+(\d{4})", text)
+    if match:
+        day, month, year = match.groups()
+        return _iso(year, month, day)
     return None
 
 
@@ -180,20 +184,20 @@ def to_int(value: Any) -> int | None:
 
 @normalizer("person_name")
 def person_name(value: str) -> str | None:
-    """Strip professional titles and trailing qualifiers from a person name."""
+    """Strip professional titles and trailing qualifiers from a person name, converting oblique forms to nominative."""
     text = re.sub(r"\s+", " ", str(value)).strip()
     text = re.sub(
-        r"^(?:(?:r\.\s*pr\.|radc[ay]\s+prawn[ya]|radczyni\s+prawna|adw\.|adwokat|mec\.|pan[i]?|dr|prof\.|hab\.|aplikant\w*\s+\w+)\s*)+",
+        r"^(?:(?:r\.\s*pr\.|radc[ayę]\s+prawn[ya]|radc(?:y|ę|omu)\s+prawn(?:ego|emu|ej)|radczyni[ę]?\s+prawn(?:a|ą|ej)|adw\.|adwokat(?:a|owi|em|ka|kę|ce)?|mec\.|mecenas(?:a|owi)?|pan[iau]?|dr|prof\.|hab\.|aplikant\w*\s+\w+)\s*)+",
         "",
         text,
         flags=re.I,
     )
-    text = re.split(r"\s*[\(,;–]|\s+-\s+|\s+\(", text)[0]
+    text = re.split(r"\s*[\(,;–—]|\s+-\s+|\s+\(", text)[0]
     words = text.split()
     kept = [w for w in words if re.match(r"^[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ'-]*\.?$", w)]
     if len(kept) < 2:
         return text.strip() or None
-    return " ".join(kept[:3]).rstrip(".")
+    return nominative(" ".join(kept[:3]).rstrip("."))
 
 
 PLACEHOLDER = re.compile(r"_{3,}|\.{4,}|…{2,}|\[\s*(?:nazwa|imię)", re.I)
@@ -263,59 +267,80 @@ SUFFIX_RULES = {
     "m1": [(r"([sc]k|dzk)iego$", r"\1i"), (r"([sc]k|dzk)iemu$", r"\1i"), (r"(?<=[bcdfghjklłmnprstwzż])a$", ""), (r"(?<=[bcdfghjklłmnprstwzż])owi$", "")],
     "f": [(r"([sc]k|dzk)iej$", r"\1a"), (r"owej$", "owa")],
 }
-OBLIQUE_CASE = re.compile(r"(?:^|[:.])(?:gen|acc|dat|inst|loc)(?:[:.]|$)")
+OBLIQUE_CASE = re.compile(r"(?:^|[:.])(?:gen|acc|dat|inst)(?:[:.]|$)")
+NOM_CASE = re.compile(r"(?:^|[:.])nom(?:[:.]|$)")
 
 
-def _readings(token: str) -> list[tuple[str, str, str]]:
-    """Noun readings of a token as (lemma, case field, gender field)."""
+def _readings(token: str) -> list[tuple[str, str, str, list[str]]]:
+    """Singular noun/adjective readings of a token as (lemma, case field, gender field, qualifiers)."""
     analyser = _morfeusz()
     if analyser is None:
         return []
     out = []
     for item in analyser.analyse(token):
         tag = item[2][2].split(":")
-        if tag[0] == "subst" and len(tag) >= 4:
-            out.append((item[2][1].split(":")[0], tag[2], tag[3]))
+        if tag[0] in ("subst", "adj") and len(tag) >= 4 and "sg" in tag[1].split("."):
+            out.append((item[2][1].split(":")[0], tag[2], tag[3], list(item[2][3])))
     return out
 
 
-def _convert(token: str, gender: str) -> tuple[str, bool]:
+def _is_nom(token: str, gender: str | None = None, is_first: bool = False) -> bool:
+    """Tell whether a token already has a singular nominative reading (as a first name when is_first is set)."""
+    all_readings = _readings(token)
+    has_given = any("imię" in q for _, _, _, q in all_readings)
+    for lemma, case, genders, quals in all_readings:
+        if lemma == token and NOM_CASE.search(case) and (gender is None or gender in genders.split(".")):
+            if not is_first or "imię" in quals or not has_given:
+                return True
+    return False
+
+
+def _convert(token: str, gender: str, is_first: bool = False) -> tuple[str, bool]:
     """Nominative of a capitalized token for a gender; the flag says whether an oblique reading was used."""
-    if not token[:1].isupper():
+    if not token[:1].isupper() or _is_nom(token, gender, is_first):
         return token, False
-    for lemma, case, genders in _readings(token):
+    all_readings = _readings(token)
+    has_given = any("imię" in q for _, _, _, q in all_readings)
+    for lemma, case, genders, quals in all_readings:
         if lemma[:1].isupper() and gender in genders.split(".") and OBLIQUE_CASE.search(case):
+            if is_first and "imię" not in quals and has_given:
+                continue
             return lemma, True
     return token, False
 
 
 @normalizer("nominative")
 def nominative(value: str) -> str | None:
-    """Convert a person name written in an oblique case (e.g. 'Jana Kowalskiego') to nominative with Morfeusz2."""
+    """Convert a person name written in an oblique case (e.g. 'Mateusza Szymańskiego') to nominative with Morfeusz2."""
     text = re.sub(r"\s+", " ", str(value)).strip()
     if not text or _morfeusz() is None:
         return text or None
+    words_in = text.split(" ")
     best: tuple[int, str] = (0, text)
     best_gender = None
     for gender in ("m1", "f"):
         converted = 0
+        ambig_first = False
         words = []
-        for word in text.split(" "):
+        for idx, word in enumerate(words_in):
             pieces = []
             for piece in word.split("-"):
-                new, used = _convert(piece, gender)
+                new, used = _convert(piece, gender, is_first=(idx == 0))
+                if idx == 0 and used and _is_nom(piece, is_first=True):
+                    ambig_first = True
                 converted += used
                 pieces.append(new)
             words.append("-".join(pieces))
+        if ambig_first and converted == 1:
+            continue
         if converted > best[0]:
             best = (converted, " ".join(words))
             best_gender = gender
     if best_gender is None:
         return best[1]
     words = best[1].split(" ")
-    original = text.split(" ")
     rules = SUFFIX_RULES[best_gender]
-    for i, (new, old) in enumerate(zip(words, original)):
+    for i, (new, old) in enumerate(zip(words, words_in)):
         if new == old and new[:1].isupper() and not _readings(new):
             for pattern, replacement in rules:
                 if re.search(pattern, new):

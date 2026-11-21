@@ -1,7 +1,7 @@
 """Measure what open LLMs extract on their own (rules only classify the document; every llm.fields value comes from the model).
 
 Usage:
-    python tools/eval_llm.py --url http://100.89.78.124:11434/v1 --data data_train --cases 10 \
+    python tools/eval_llm.py --url http://localhost:11434/v1 --data data_train --cases 10 \
         --models hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0 local/qwen3-1.7b
 
 Prints per-model precision, recall, F1 and mean seconds per document, and writes a JSON summary next to --out.

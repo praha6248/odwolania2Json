@@ -106,17 +106,38 @@ def compare(predicted: Any, expected: Any, report: Report, label: str, fuzzy: bo
         report.errors.append((label, path, p, g))
 
 
+def _case_dirs(root: Path) -> list[Path]:
+    """Return case folders inside root, descending one extra level when cases are grouped by document type."""
+    direct = sorted(p for p in root.iterdir() if p.is_dir() and any(p.glob("*.json")) and any(p.glob("*.pdf")))
+    if direct:
+        return direct
+    return sorted(p for p in root.glob("*/*") if p.is_dir() and any(p.glob("*.json")) and any(p.glob("*.pdf")))
+
+
 def evaluate_dataset(processor: Any, data_dir: str | Path, pairs: dict[str, str] | None = None, fuzzy: bool = True) -> Report:
-    """Run the processor on a training set laid out as <case>/<doc>.pdf next to <case>/<ref>.json."""
-    pairs = pairs or {"odwolanie.pdf": "odwolanie.json", "pelnomocnictwo.pdf": "pelnomocnictwo.json", "potwierdzenie_przelewu.pdf": "przelew.json"}
+    """Run the processor on a dataset laid out as <case>/<doc>.pdf next to <case>/<ref>.json."""
+    default_pairs = {
+        "odwolanie.pdf": "odwolanie.json",
+        "pelnomocnictwo.pdf": "pelnomocnictwo.json",
+        "potwierdzenie_przelewu.pdf": "przelew.json",
+        "przelew.pdf": "przelew.json",
+    }
     report = Report()
-    for case in sorted(p for p in Path(data_dir).iterdir() if p.is_dir()):
-        for pdf_name, json_name in pairs.items():
-            pdf, ref = case / pdf_name, case / json_name
+    root = Path(data_dir)
+    for case in _case_dirs(root):
+        if pairs is not None:
+            items = [(case / pdf_name, case / json_name) for pdf_name, json_name in pairs.items()]
+        else:
+            items = []
+            for pdf in sorted(case.glob("*.pdf")):
+                ref = case / default_pairs.get(pdf.name, f"{pdf.stem}.json")
+                items.append((pdf, ref))
+        for pdf, ref in items:
             if not (pdf.exists() and ref.exists()):
                 continue
             result = processor.process_pdf(pdf)
-            compare(result.data, json.loads(ref.read_text(encoding="utf-8")), report, f"{case.name}/{pdf_name}", fuzzy)
+            label = str(pdf.relative_to(root))
+            compare(result.data, json.loads(ref.read_text(encoding="utf-8")), report, label, fuzzy)
     return report
 
 

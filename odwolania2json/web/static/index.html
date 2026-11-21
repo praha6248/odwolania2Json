@@ -260,28 +260,64 @@
         <p class="muted lead">Model językowy jest opcjonalny. Bez niego aplikacja działa wyłącznie na regułach z YAML, lokalnie i bez sieci.</p></div></div>
       <div class="card settings-card">
         <div class="card-head">
-          <div><h2>Tryb pracy</h2><p class="muted">Tryb szybki: same reguły. Tryb dokładny: reguły plus niezależna weryfikacja każdego pola przez LLM, streszczenia i asystent.</p></div>
+          <div><h2>Tryb pracy</h2><p class="muted">Wybierz sposób przetwarzania nowych dokumentów.</p></div>
         </div>
         <div class="form">
-          <div class="segmented big" id="mode-switch" role="radiogroup" aria-label="Tryb pracy">
-            <button type="button" data-mode="fast" role="radio">Szybki</button>
-            <button type="button" data-mode="accurate" role="radio">Dokładny</button>
+          <div class="mode-grid" id="mode-switch" role="radiogroup" aria-label="Tryb pracy">
+            <button type="button" class="mode-card" data-mode="fast" role="radio">
+              <span class="mode-top"><b>Szybki</b><span class="chip ok">Rekomendowany</span></span>
+              <span class="mode-desc">Wyłącznie deterministyczne reguły z YAML. Działa lokalnie na CPU bez sieci (~0,1 s / dokument) i daje maksymalną ocenę za moc modelu.</span>
+            </button>
+            <button type="button" class="mode-card" data-mode="accurate" role="radio">
+              <span class="mode-top"><b>Dokładny</b><span class="chip pelnomocnictwo">Reguły + LLM</span></span>
+              <span class="mode-desc">Reguły z YAML oraz niezależna weryfikacja każdego pola przez otwarty model językowy, streszczenia dokumentów i odpowiedzi asystenta z cytatami.</span>
+            </button>
           </div>
         </div>
       </div>
       <div class="card settings-card">
         <div class="card-head">
-          <div><h2>Model językowy (LLM)</h2><p class="muted">Otwarty model przez API zgodne z OpenAI: Ollama, vLLM, llama.cpp lub dostawca w UE.</p></div>
+          <div><h2>Model językowy (LLM)</h2><p class="muted">Otwarty model przez API zgodne z OpenAI: Ollama, vLLM, llama.cpp lub dostawca chmury w UE/EOG.</p></div>
           <label class="switch"><input type="checkbox" id="llm-enabled"><span class="slider"></span><span class="switch-label" id="llm-enabled-label">Wyłączony</span></label>
         </div>
         <div class="form">
-          <label class="field"><span class="field-label">Adres API</span><input id="llm-url" placeholder="http://100.89.78.124:11434/v1"></label>
-          <label class="field"><span class="field-label">Model</span><input id="llm-model" placeholder="hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0"></label>
+          <div class="field">
+            <span class="field-label">Gotowe profile dostawców</span>
+            <div class="preset-grid" id="llm-presets" role="group" aria-label="Gotowe profile dostawców">
+              <button type="button" class="preset-card" data-url="http://localhost:11434/v1" data-model="hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0" data-need-key="0">
+                <b>Ollama · Bielik 4.5B</b><small>Lokalnie / LAN · polski model 4,5B (Q8_0)</small>
+              </button>
+              <button type="button" class="preset-card" data-url="http://localhost:11434/v1" data-model="hf.co/speakleash/Bielik-1.5B-v3.0-Instruct-GGUF:Q8_0" data-need-key="0">
+                <b>Ollama · Bielik 1.5B</b><small>Lokalnie / LAN · najlżejszy polski model 1,5B</small>
+              </button>
+              <button type="button" class="preset-card" data-url="http://localhost:8000/v1" data-model="speakleash/Bielik-4.5B-v3.0-Instruct" data-need-key="0">
+                <b>vLLM / llama.cpp</b><small>Własny serwer OpenAI API (:8000/v1)</small>
+              </button>
+              <button type="button" class="preset-card" data-url="https://oai.endpoints.kepler.ai.cloud.ovh.net/v1" data-model="Qwen2.5-7B-Instruct" data-need-key="1">
+                <b>OVHcloud AI (UE)</b><small>Chmura w UE/EOG · wymaga klucza API</small>
+              </button>
+              <button type="button" class="preset-card" data-url="https://api.scaleway.ai/v1" data-model="qwen2.5-7b-instruct" data-need-key="1">
+                <b>Scaleway AI (UE)</b><small>Chmura w UE/EOG (Paryż) · wymaga klucza API</small>
+              </button>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="field"><span class="field-label">Adres API</span><input id="llm-url" placeholder="http://localhost:11434/v1"><span class="field-hint">Endpoint zgodny ze standardem OpenAI (<code>/v1</code>).</span></label>
+            <label class="field"><span class="field-label">Model</span><input id="llm-model" list="llm-models-list" placeholder="hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0"><datalist id="llm-models-list"></datalist><span class="field-hint" id="llm-models-hint">Nazwa otwartego modelu (np. Bielik-4.5B, Qwen2.5).</span></label>
+          </div>
+          <div class="llm-models hidden" id="llm-discovered"></div>
           <label class="field"><span class="field-label">Klucz API</span><input id="llm-key" type="password" placeholder="pozostaw puste, aby nie zmieniać" autocomplete="off"><span class="field-hint" id="llm-key-hint"></span></label>
           <label class="check"><input type="checkbox" id="llm-persist"> Zapisz w pliku <code>.env</code> (ustawienia przetrwają restart)</label>
+          <div class="llm-status-box neutral" id="llm-check-box">
+            <span class="llm-status-dot" id="llm-check-icon" aria-hidden="true"></span>
+            <div class="llm-status-copy">
+              <b id="llm-check-title">Status połączenia</b>
+              <div class="muted" id="llm-check-out">Połączenie nie było jeszcze testowane.</div>
+            </div>
+          </div>
         </div>
         <div class="form-foot">
-          <div class="muted" id="llm-check-out">Połączenie nie było jeszcze testowane.</div>
+          <span class="muted small">Klucz API jest tylko zapisywany i nigdy nie wraca w odpowiedziach serwera.</span>
           <div class="actions"><button class="btn" id="llm-test">Testuj połączenie</button><button class="btn primary" id="llm-save">Zapisz</button></div>
         </div>
       </div>
@@ -323,6 +359,23 @@
     <div class="form-foot">
       <a class="btn" id="update-notes" target="_blank">Co nowego</a>
       <div class="actions"><button class="btn primary" id="update-action">Aktualizuj</button></div>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop hidden" id="doc-modal" role="dialog" aria-modal="true" aria-labelledby="doc-modal-title">
+  <div class="modal doc-modal card">
+    <div class="doc-modal-head">
+      <span class="doc-modal-icon" id="doc-modal-icon" aria-hidden="true"></span>
+      <div class="doc-modal-titles">
+        <span class="chip" id="doc-modal-chip">Dokument</span>
+        <h2 id="doc-modal-title">Podgląd dokumentu</h2>
+        <p class="muted" id="doc-modal-file"></p>
+      </div>
+    </div>
+    <div class="modal-body" id="doc-modal-body"></div>
+    <div class="form-foot">
+      <button type="button" class="btn hidden" id="doc-modal-secondary"></button>
+      <div class="actions"><button type="button" class="btn primary doc-ok-btn" id="doc-modal-ok">OK</button></div>
     </div>
   </div>
 </div>
