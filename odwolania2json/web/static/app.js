@@ -199,7 +199,27 @@ function renderTable() {
 
 /** Tell whether a case needs attention (party mismatch, missing documents or no reference). */
 function needsAttention(c) {
-  return !c.reference || !c.consistent || c.missing_types.length > 0;
+  return !c.reference || !c.consistent || c.missing_types.length > 0 || c.formal === "error";
+}
+
+const CHECK_STATUS = { ok: ["ok", "Bez uwag"], warn: ["warn", "Do sprawdzenia"], error: ["bad", "Błędy formalne"] };
+const CHECK_ICON = {
+  ok: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  warn: '<svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><path d="M10.3 3.9L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+  error: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  skip: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>',
+};
+
+/** Render the formal checklist of one case. */
+function renderChecks(c) {
+  if (!c.checks || !c.checks.length) return "";
+  const [cls, label] = CHECK_STATUS[c.formal] || CHECK_STATUS.ok;
+  const skipped = c.checks.filter((k) => k.status === "skip").length;
+  const text = skipped ? `${label} · ${skipped} niesprawdzone` : label;
+  const items = c.checks.map((k) => `<li class="check ${k.status}" ${k.note ? `title="${esc(k.note)}"` : ""}>
+      <span class="check-icon">${CHECK_ICON[k.status] || ""}</span>
+      <span class="check-body"><b>${esc(k.label)}</b><small>${esc(k.detail || "")}</small></span></li>`).join("");
+  return `<details class="checks" ${c.formal !== "ok" ? "open" : ""}><summary><span>Kontrola formalna</span><span class="status ${cls}">${text}</span></summary><ul>${items}</ul></details>`;
 }
 
 /** Fetch case groups from the server and render them. */
@@ -238,7 +258,7 @@ function renderCases() {
       <ul class="case-docs">${c.documents.sort((a, b) => TYPE_ORDER.indexOf(a.doc_type) - TYPE_ORDER.indexOf(b.doc_type)).map((d) => `
         <li class="${d.status === "rozbieżne" ? "outlier" : ""}" data-open="${d.id}" tabindex="0" title="${d.status === "rozbieżne" ? "Strona różni się od pozostałych dokumentów sprawy" : ""}">
           <span class="chip ${d.doc_type}">${esc(d.doc_label)}</span><span class="fname">${esc(d.filename)}</span>
-          <span class="party">${esc((d.party || []).join(", ") || "—")}</span></li>`).join("")}</ul>${missing}</article>`;
+          <span class="party">${esc((d.party || []).join(", ") || "—")}</span></li>`).join("")}</ul>${missing}${renderChecks(c)}</article>`;
   }).join("");
   renderKpis();
 }
