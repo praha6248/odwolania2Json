@@ -99,12 +99,21 @@ def main(argv: list[str] | None = None) -> int:
         results = processor.process_tree(args.input, args.output, args.trace)
         done = sum(r.data is not None for r in results)
         print(f"Processed {len(results)} PDF(s), wrote {done} JSON file(s) to {args.output}")
+        for result in results:
+            if result.data is None:
+                print(f"  {result.path.name}: {result.message}")
         return 0
 
     if args.command == "extract":
         result = processor.process_pdf(args.pdf, args.type)
-        print(json.dumps(result.trace() if args.trace else result.data, ensure_ascii=False, indent=2))
-        return 0 if result.data is not None else 2
+        if args.trace:
+            print(json.dumps(result.trace(), ensure_ascii=False, indent=2))
+        elif result.data is not None:
+            print(json.dumps(result.data, ensure_ascii=False, indent=2))
+        if result.data is None:
+            print(result.message, file=sys.stderr)
+            return 2
+        return 0
 
     if args.command == "eval":
         from .evaluate import evaluate_dataset, format_report

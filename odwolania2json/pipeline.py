@@ -32,6 +32,18 @@ class DocumentResult:
     error: str | None = None
     ocr: dict[str, Any] | None = None
 
+    @property
+    def message(self) -> str | None:
+        """Human readable reason why no JSON was produced, or None when extraction succeeded."""
+        if self.error:
+            return f"Nie udało się odczytać pliku: {self.error}"
+        if self.doc_type is None:
+            scores = self.classification.scores
+            best = max(scores, key=lambda k: scores[k]) if scores else None
+            detail = f" (najbliższy: {best}, {scores[best]:g} pkt)" if best else ""
+            return f"Nie udało się dopasować typu dokumentu{detail}. JSON nie został wygenerowany."
+        return None
+
     def trace(self) -> dict[str, Any]:
         """Return a transparent, serializable account of how the output was produced."""
         return {
@@ -44,6 +56,7 @@ class DocumentResult:
             },
             "fields": self.fields,
             "seconds": round(self.seconds, 3),
+            "message": self.message,
             "ocr": self.ocr,
             "error": self.error,
         }
@@ -100,7 +113,10 @@ class Processor:
                 write_json(output_dir / relative, result.data)
             if trace_dir is not None:
                 write_json(Path(trace_dir) / relative.with_suffix(".trace.json"), result.trace())
-            log.info("%s -> %s", pdf.relative_to(input_dir), result.doc_type or "skipped")
+            if result.data is None:
+                log.warning("%s: %s", pdf.relative_to(input_dir), result.message)
+            else:
+                log.info("%s -> %s", pdf.relative_to(input_dir), result.doc_type)
         return results
 
 

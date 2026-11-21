@@ -152,7 +152,7 @@ async function openDoc(id) {
   ].map(([l, v]) => `<div><div class="fact-label">${l}</div><div class="fact-value">${v}</div></div>`).join("");
   $("#d-pdf").innerHTML = `<iframe src="/api/documents/${id}/pdf#view=FitH&navpanes=0&pagemode=none" title="Podgląd PDF"></iframe>`;
   $("#d-json").innerHTML = doc.data ? highlight(doc.data)
-    : '<div class="empty-state"><b>Brak wyniku</b><span>Nie rozpoznano typu. Wybierz typ z listy w nagłówku, aby wymusić ekstrakcję.</span></div>';
+    : `<div class="empty-state"><b>Nie udało się dopasować typu dokumentu</b><span>${esc(doc.message || "")}</span><span>Jeśli to pomyłka, wybierz typ z listy w nagłówku, aby wymusić ekstrakcję.</span></div>`;
   renderSources(doc);
   renderText(doc);
   renderClassification(doc);
