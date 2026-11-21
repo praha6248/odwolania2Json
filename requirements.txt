@@ -1,5 +1,10 @@
 pypdf>=5.0
+pypdfium2>=4.30
 PyYAML>=6.0
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
+rapidocr>=3.0
+onnxruntime>=1.20
+numpy>=2.0
+pillow>=10.0

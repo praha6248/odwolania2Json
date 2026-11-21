@@ -1,0 +1,10 @@
+.venv
+.git
+dist
+build
+data_train
+input
+output
+tests
+**/__pycache__
+.claude
