@@ -75,9 +75,13 @@ NAME_WINDOW = 250
 def cut_name(text: str) -> str | None:
     """Return the organization name at the start of a fragment, ending before its address or identifiers."""
     text = text.strip().lstrip(":;,. ").strip()
+    form_name = fx.search(r"(?:^|\n)[ \t]*nazwa(?: firmy)?[ \t]*:[ \t]*(.+?)\n\s*(?:miejscowość|ulica|kod pocztowy|adres)\s*:", text[:NAME_WINDOW], re.I | re.S)
+    if form_name:
+        return entity_name(form_name.group(1))
     firm = fx.match(rf"{PERSON},?\s+(?:prowadząc\w*(?:/a|\(a\))?|działając\w*(?:/a|\(a\))?)[^\n]*?\bpod\s+(?:firmą|nazwą)\s+", text, re.I)
     if firm:
         text = text[firm.end():]
+    text = re.split(r"\n[^\n,]{1,65}\s\d+[A-Za-z]?[,;]?\s+\d{2}-\d{3}\b", text, maxsplit=1)[0]
     match = fx.search(ADDRESS_STOP, text[:NAME_WINDOW], re.I)
     if match:
         name = text[: match.start()]
@@ -392,6 +396,14 @@ def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
         leader = next((m for m in members if fx.search(r"lider|pełnomocnik", m[0], re.I)), members[0])
         main = leader[1]
     entity = parse_entity(main)
+    # A corporate footer can repeat the appellant's name and its registration identifiers.
+    if entity["name"] and not members:
+        footer = rf"^{re.escape(entity['name'])}[ \t]*\n(?:[^\n:]{{0,100}}\n){{0,2}}(?P<ids>(?:KRS|NIP|REGON)\b[^\n]{{1,160}})"
+        candidates = [ids_in(m.group("ids")) for m in re.finditer(footer, ctx.text, re.I | re.M)]
+        for key in ("krs", "nip", "regon"):
+            values = {row[key] for row in candidates if row[key]}
+            if not entity[key] and len(values) == 1 and len(candidates) >= 2:
+                entity[key] = values.pop()
     shared = parse_entity(block)
     rep = entity["rep"] or shared["rep"]
     result = {
@@ -412,7 +424,7 @@ def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
 @extractor("contracting_authorities")
 def extract_contracting_authorities(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | None]:
     """Extract one or more contracting authorities, marking the one conducting a joint procedure."""
-    found = party_block(ctx.text, spec.get("label", r"(?:[^\n]{0,60}?\(\s*)?Zamawiając\w*\s*\)?(?=\s*[:(])"), spec.get("stop", PARTY_STOP))
+    found = party_block(ctx.text, spec.get("label", r"(?:[^\n]{0,60}?\(\s*)?Zamawiając(?:y|a|i)\s*\)?(?=\s*[:(])"), spec.get("stop", PARTY_STOP))
     if not found:
         return None, None
     block, start = found

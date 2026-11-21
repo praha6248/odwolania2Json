@@ -95,9 +95,9 @@ def digits(value: str) -> str | None:
 
 @normalizer("account")
 def account(value: str) -> str | None:
-    """Normalize a bank account number to bare digits without the PL prefix."""
-    out = re.sub(r"[^0-9]", "", re.sub(r"^\s*PL", "", str(value), flags=re.I))
-    return out or None
+    """Remove layout whitespace while preserving a printed country prefix and leading zeros."""
+    text = re.sub(r"\s+", "", str(value)).upper()
+    return text if re.fullmatch(r"(?:PL)?\d{26}", text) else None
 
 
 @normalizer("date_iso")
