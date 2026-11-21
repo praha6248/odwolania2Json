@@ -21,20 +21,31 @@ Aplikacja przyjmuje PDF, **rozpoznaje rodzaj dokumentu** (odwołanie, pełnomocn
 5. **Wynik:** JSON zgodny ze schematem UZP, nazwany jak plik źródłowy, w tej samej strukturze folderów co wejście.
 6. **Tryb dokładny (opcjonalny):** otwarty LLM niezależnie sprawdza pola. Rozbieżności trafiają do weryfikacji, a nie do wyniku. Do tego streszczenia i asystent z cytatami.
 
+### Funkcje dodatkowe (bez modelu językowego)
+
+- **Kontrola formalna sprawy:** dla każdej sprawy aplikacja sprawdza krzyżowo trzy dokumenty: czy odwołujący jest mocodawcą pełnomocnictwa, czy pełnomocnik z odwołania ma pełnomocnictwo, czy tytuł przelewu wskazuje postępowanie, czy opłata poprzedza odwołanie, czy opłata skarbowa pokrywa 17 zł na pełnomocnika i czy odwołanie mieści się w terminie z art. 515 Pzp (5 lub 10 dni, z przesunięciem na dzień roboczy po weekendach i świętach). Reguły są w `config/formal_checks.yaml`.
+- **Źródło w PDF:** kliknięcie pola podświetla wartość bezpośrednio na stronie dokumentu.
+- **Kreator nowego typu dokumentu:** wgrywasz przykład, zaznaczasz wartości myszką, a kreator proponuje reguły (etykieta, wzorzec, normalizacja), pokazuje wynik na żywo, sprawdza inne wgrane dokumenty i zapisuje zwykły plik YAML.
+- **Eksport do Excela i CSV:** zestawienie dokumentów, arkusz na każdy typ z polami JSON w kolumnach i arkusz z kontrolą formalną.
+- **Wyszukiwarka w dokumentach:** lokalne wyszukiwanie fragmentów (BM25) z podświetleniem słów. Z włączonym LLM ta sama zakładka odpowiada na pytania z cytatami.
+- **Anonimizacja PDF (na żądanie):** przycisk „Anonimizuj PDF” albo polecenie `anonymize` tworzy osobną kopię z zaczernionymi imionami i nazwiskami osób (także w odmianie), numerami PESEL, e-mailami i telefonami. Strony kopii są obrazami, więc zakrytego tekstu nie da się skopiować. Oryginał i JSON pozostają bez zmian.
+
 ### Zrzuty ekranu
 
 | | |
 |---|---|
-| ![Lista dokumentów](docs/screenshots/01-dokumenty.png) **Dokumenty:** strefa przeciągania, liczniki spraw i dokumentów, tabela z typem, stroną, numerem postępowania i kompletnością pól. | ![Dokument i JSON](docs/screenshots/02-dokument-json.png) **Analiza dokumentu:** strony PDF obok wyniku JSON. |
-| ![Źródło wartości](docs/screenshots/03-zrodla-tekst.png) **Przejrzystość:** kliknięcie pola w zakładce *Źródła* podświetla fragment dokumentu, z którego pochodzi wartość. | ![Weryfikacja](docs/screenshots/04-weryfikacja.png) **Weryfikacja:** pola puste, niejednoznaczne lub rozbieżne z LLM, z różnicami, fragmentem i edycją. |
-| ![Sprawy](docs/screenshots/05-sprawy.png) **Sprawy:** dokumenty pogrupowane po numerze postępowania, zgodność stron i brakujące dokumenty. | ![Streszczenie](docs/screenshots/06-streszczenie.png) **Streszczenie (tryb dokładny):** zarzuty, żądania, terminy i kwoty. |
-| ![Asystent](docs/screenshots/07-asystent.png) **Asystent (RAG):** pytania o wszystkie wgrane dokumenty, odpowiedź z klikalnymi źródłami. | ![Ustawienia](docs/screenshots/08-ustawienia.png) **Ustawienia:** tryb szybki lub dokładny, model, klucz, test połączenia. |
+| ![Lista dokumentów](docs/screenshots/01-dokumenty.png) **Dokumenty:** strefa przeciągania, liczniki, tabela z typem, stroną, numerem postępowania i kompletnością pól, eksport JSON, Excel i CSV. | ![Dokument i JSON](docs/screenshots/02-dokument-json.png) **Analiza dokumentu:** strony PDF obok wyniku JSON. |
+| ![Źródło w PDF](docs/screenshots/03-zrodlo-w-pdf.png) **Przejrzystość:** kliknięcie pola w zakładce *Źródła* zaznacza wartość na stronie PDF. | ![Weryfikacja](docs/screenshots/04-weryfikacja.png) **Weryfikacja:** pola puste, niejednoznaczne lub rozbieżne z LLM, z fragmentem, edycją i zaznaczeniem w PDF. |
+| ![Sprawy i kontrola formalna](docs/screenshots/05-sprawy-kontrola.png) **Sprawy:** grupowanie po numerze postępowania, zgodność stron, brakujące dokumenty i kontrola formalna. | ![Wyszukiwarka](docs/screenshots/06-wyszukiwarka.png) **Wyszukiwarka bez LLM:** najtrafniejsze fragmenty wszystkich dokumentów. |
+| ![Kreator typu](docs/screenshots/07-kreator-typu.png) **Kreator nowego typu:** zaznaczenie wartości w przykładzie tworzy pole z regułą. | ![Podgląd kreatora](docs/screenshots/08-kreator-podglad.png) **Podgląd na żywo:** wartości pól, wynik JSON, rozpoznanie przykładu i innych dokumentów. |
+| ![Streszczenie](docs/screenshots/09-streszczenie.png) **Streszczenie (tryb dokładny):** zarzuty, żądania, terminy i kwoty. | ![Asystent](docs/screenshots/10-asystent-llm.png) **Asystent z LLM:** odpowiedź wyłącznie z odnalezionych fragmentów, z klikalnymi źródłami. |
+| ![Ustawienia](docs/screenshots/11-ustawienia.png) **Ustawienia:** tryb szybki lub dokładny, model, klucz, test połączenia. | |
 
 Na telefonie nawigacja jest na dole ekranu, a tabela zamienia się w listę kart:
 
 <p>
-<img src="docs/screenshots/09-telefon-dokumenty.png" alt="Dokumenty na telefonie" width="260">
-<img src="docs/screenshots/10-telefon-sprawy.png" alt="Sprawy na telefonie" width="260">
+<img src="docs/screenshots/12-telefon-dokumenty.png" alt="Dokumenty na telefonie" width="260">
+<img src="docs/screenshots/13-telefon-sprawy.png" alt="Sprawy na telefonie" width="260">
 </p>
 
 Widoki mają własne adresy (np. `#/sprawy`, `#/dokument/<id>/weryfikacja`), więc przetrwają odświeżenie strony.
@@ -61,7 +72,7 @@ input/case1/pelnomocnictwo_nr_1.pdf   ->  output/case1/pelnomocnictwo_nr_1.json
 input/case1/przelew_nr_1.pdf          ->  output/case1/przelew_nr_1.json
 ```
 
-Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument nierozpoznany nie dostaje pliku JSON.
+Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza puli dostaje plik z pustym JSON `{}`.
 
 ### Polecenia CLI
 
@@ -71,6 +82,8 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument nierozpoz
 | `python -m odwolania2json extract plik.pdf [--trace] [--type przelew]` | JSON lub ślad dla jednego pliku |
 | `python -m odwolania2json serve [--port 8000]` | interfejs webowy |
 | `python -m odwolania2json eval <katalog_z_danymi> [--errors 20] [--strict]` | precyzja, czułość i F1 względem plików referencyjnych |
+| `python -m odwolania2json check [input]` | kontrola formalna każdej sprawy (folderu) według `config/formal_checks.yaml` |
+| `python -m odwolania2json anonymize [input] [-o output_anonimizacja]` | kopie PDF z zaczernionymi danymi osobowymi |
 | `python -m odwolania2json types` | lista typów dokumentów, ekstraktorów i normalizatorów |
 | `python -m odwolania2json llm-check` | test połączenia z modelem językowym |
 
@@ -81,12 +94,15 @@ python -m odwolania2json serve        # http://127.0.0.1:8000
 ```
 
 - **Dokumenty:** kafelki KPI, filtr typu, tabela z kompletnością pól i eksportem.
-- **Szczegół:** podgląd PDF obok JSON; zakładka *Źródła* pokazuje metodę i fragment tekstu dla każdego pola, a kliknięcie podświetla go w tekście dokumentu; *Klasyfikacja* pokazuje punktację typów.
+- **Szczegół:** podgląd PDF obok JSON; zakładka *Źródła* pokazuje metodę i fragment tekstu dla każdego pola, a kliknięcie zaznacza wartość na stronie PDF; *Klasyfikacja* pokazuje punktację typów; przycisk *Anonimizuj PDF* pobiera kopię z zaczernionymi danymi osobowymi.
+- **Sprawy:** grupowanie, zgodność stron i kontrola formalna każdej sprawy.
+- **Asystent:** wyszukiwarka fragmentów bez LLM, a z LLM odpowiedzi z cytatami.
+- **Typy dokumentów:** lista typów z YAML i kreator nowego typu.
 
 ### Tryby pracy
 
 - **Szybki** (domyślny): same reguły z YAML, bez sieci i bez LLM. Daje maksimum punktów za „moc modelu” w ocenie UZP.
-- **Dokładny** (opcjonalny, *Ustawienia*): reguły plus niezależna weryfikacja każdego pola przez otwarty LLM. Rozbieżności trafiają do zakładki *Weryfikacja*, gdzie można poprawić wartość, wybrać wartość LLM albo zatwierdzić puste pole. Do tego **streszczenie dokumentu** i **Asystent**: pytania o wszystkie wgrane dokumenty (RAG z BM25 na CPU), z odpowiedzią wyłącznie z odnalezionych fragmentów i z klikalnymi źródłami.
+- **Dokładny** (opcjonalny, *Ustawienia*): reguły plus niezależna weryfikacja każdego pola przez otwarty LLM. Rozbieżności trafiają do zakładki *Weryfikacja*, gdzie można poprawić wartość, wybrać wartość LLM albo zatwierdzić puste pole. Do tego **streszczenie dokumentu** i odpowiedzi **Asystenta** na pytania o wszystkie wgrane dokumenty (RAG z BM25 na CPU), wyłącznie z odnalezionych fragmentów i z klikalnymi źródłami.
 
 **Sprawy:** dokumenty są automatycznie grupowane po numerze postępowania (sekcja `case:` w YAML). Interfejs pokazuje zgodność stron między odwołaniem, pełnomocnictwem i przelewem oraz brakujące dokumenty.
 

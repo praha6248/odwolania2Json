@@ -13,7 +13,7 @@
 
 1. **Tekst** (`pdftext.py`). `pypdf` wyciąga warstwę tekstową stron. Tekst jest normalizowany: NFC, scalanie akcentów z generatorów typu LaTeX (`˛a` → `ą`), usuwanie miękkich dzielników i stopek „Strona X z Y”. Strony z mniej niż `ocr.min_chars_per_page` znakami trafiają do OCR.
 2. **OCR** (`ocr.py`). Strona jest renderowana przez `pypdfium2`. Silnik wybierany jest według `ocr.engines`: Tesseract z modelem `pol`, jeśli jest dostępny (obraz Docker), inaczej RapidOCR (PP-OCRv5 Latin, ONNX Runtime, CPU). Wynik trafia do cache po SHA-1 pliku i przechodzi poprawki typowych pomyłek (`o.0.` → `o.o.`, `ž` → `ż`, cyfry/litery).
-3. **Klasyfikacja** (`classifier.py`). Każdy typ ma w YAML sekcję `classify` z wagami: słowa w nagłówku (`head_keywords`), w całym tekście (`keywords`), wyrażenia regularne (`patterns`) i wskazówki z nazwy pliku (`filename_hints`). Porównanie ignoruje wielkość liter, odstępy i polskie znaki. Wygrywa najwyższy wynik powyżej `min_classification_score`; poniżej progu dokument nie dostaje JSON.
+3. **Klasyfikacja** (`classifier.py`). Każdy typ ma w YAML sekcję `classify` z wagami: słowa w nagłówku (`head_keywords`), w całym tekście (`keywords`), wyrażenia regularne (`patterns`) i wskazówki z nazwy pliku (`filename_hints`). Porównanie ignoruje wielkość liter, odstępy i polskie znaki. Wygrywa najwyższy wynik powyżej `min_classification_score`; poniżej progu dokument dostaje pusty JSON `{}`.
 4. **Ekstrakcja** (`engine.py`). Dla wybranego typu:
    - **sekcje**: fragmenty dokumentu wyznaczone regexami `start` i `end` (np. nagłówek, blok „dotyczy”, pierwszy zarzut), do których zawężane są wyszukiwania;
    - **pola**: każde pole ma łańcuch ekstraktorów (`extract`), próbowanych po kolei do pierwszej niepustej wartości, po czym działają normalizatory (`normalize`);
@@ -24,7 +24,7 @@
 ## Przejrzystość ekstrakcji
 
 Każde pole niesie `FieldResult`: wartość, źródło (`rules` albo `llm`), nazwę metody (np. `label:Rachunek odbiorcy`, `keyword:zaniechał unieważnienia`), fragment tekstu i pozycję w dokumencie. Ślad jest dostępny:
-- w interfejsie (zakładka *Źródła*; kliknięcie podświetla fragment w tekście),
+- w interfejsie (zakładka *Źródła*; kliknięcie zaznacza wartość na stronie PDF, a „Pokaż w tekście” podświetla fragment w tekście). Pozycję na stronie wyznacza `locate.py`: linie fragmentu źródłowego, a w razie potrzeby sama wartość, są wyszukiwane w warstwie tekstowej pdfium; przy kilku wystąpieniach wybierane jest najbliższe pozycji fragmentu,
 - w CLI: `python -m odwolania2json extract plik.pdf --trace` albo `run --trace traces/`.
 
 ## Odporność na OCR
@@ -42,6 +42,18 @@ Każde pole niesie `FieldResult`: wartość, źródło (`rules` albo `llm`), naz
 | nowy normalizator | `@normalizer("nazwa")` w module wtyczki | tylko ten moduł |
 | inny model LLM / dostawca | `.env` albo `settings.yaml` | nie |
 | inny silnik OCR / kolejność | `ocr.engines` w `settings.yaml` | nie |
+
+Dwa dodatkowe mechanizmy też są sterowane konfiguracją:
+- **kontrola formalna sprawy** (`formal.py`, `config/formal_checks.yaml`): lista sprawdzeń o rodzajach `same`, `contains`, `mentions`, `date_order`, `min_amount` i `deadline`, ze ścieżkami do pól wyjściowego JSON (np. `odwolanie:Odwolujacy[].nazwa`). Termin liczony jest z przesunięciem na dzień roboczy (soboty, niedziele i polskie święta, w tym ruchome od Wielkanocy);
+- **kreator typu** (`wizard.py`): z zaznaczonej wartości w przykładzie tworzy definicję pola (ekstraktor `label` albo `regex`, wzorzec wartości i normalizator dobrane do jej kształtu), podpowiada frazy do klasyfikacji, uruchamia szkic na przykładzie i na pozostałych wgranych dokumentach, a na końcu zapisuje zwykły plik YAML i przeładowuje konfigurację.
+
+## Funkcje pomocnicze
+
+| Moduł | Rola |
+|---|---|
+| `export.py` | Excel (zestawienie, arkusz na typ z polami JSON w kolumnach, kontrola formalna) i CSV dla Excela |
+| `assistant.py` | BM25 na fragmentach dokumentów: wyszukiwarka bez modelu, a z LLM odpowiedzi z cytatami i streszczenia |
+| `anonymize.py` | zaczernienie danych osobowych (osoby z pól, PESEL z sumą kontrolną, e-mail, telefon); strony zapisywane jako obrazy, bez warstwy tekstowej |
 
 ## Wydajność
 
