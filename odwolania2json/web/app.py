@@ -59,7 +59,7 @@ def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, st
         "id": doc_id,
         "filename": result.path.name,
         "doc_type": result.doc_type,
-        "doc_label": settings_labels.get(result.doc_type or "", "Nierozpoznany"),
+        "doc_label": settings_labels.get(result.doc_type or "", "Spoza puli"),
         "data": result.data,
         "fields": result.fields,
         "case_values": case_values(case_spec or {}, values),
