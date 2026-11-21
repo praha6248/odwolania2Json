@@ -95,9 +95,14 @@ def digits(value: str) -> str | None:
 
 @normalizer("account")
 def account(value: str) -> str | None:
-    """Remove layout whitespace while preserving a printed country prefix and leading zeros."""
-    text = re.sub(r"\s+", "", str(value)).upper()
-    return text if re.fullmatch(r"(?:PL)?\d{26}", text) else None
+    """Account number as written in the document without whitespace: digits, with the country code (PL or other) when shown."""
+    text = str(value).strip()
+    country = re.match(r"([A-Za-z]{2})\s?\d", text)
+    if country:
+        body = re.sub(r"[^0-9A-Za-z]", "", text[2:]).upper()
+        return country.group(1).upper() + body if body else None
+    digits = re.sub(r"[^0-9]", "", text)
+    return digits or None
 
 
 @normalizer("date_iso")
