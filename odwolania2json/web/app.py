@@ -63,6 +63,7 @@ def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, st
         "classification": result.trace()["classification"],
         "seconds": round(result.seconds, 3),
         "error": result.error,
+        "message": result.message,
         "text": result.text,
         "ocr": result.ocr,
     }
@@ -163,7 +164,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         """Download the output JSON named after the source PDF."""
         result = store.get(doc_id)["result"]
         if result["data"] is None:
-            return JSONResponse({"detail": "Document was not recognized"}, status_code=422)
+            return JSONResponse({"detail": result["message"]}, status_code=422)
         name = Path(result["filename"]).with_suffix(".json").name
         return Response(
             json.dumps(result["data"], ensure_ascii=False, indent=2),
