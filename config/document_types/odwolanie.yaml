@@ -46,6 +46,15 @@ sections:
     include_start: true
     end: ['\n\s*Zarzut', '\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])', ';', '\n\s*\d\)']
     max_chars: 400
+  appeal_against:
+    start: '(?:wnoszę|składam|wnosi)\s+odwołanie\s+(?:na|od|wobec)'
+    include_start: true
+    end: ['\n\s*II\.', 'zarzucam', '\n\s*(?:2[).]|b\))', ';\s*\n']
+    max_chars: 500
+  charges_list:
+    start: 'następując\w*\s+czynności[^:\n]*:\s*'
+    end: ['\n\s*2[).]', ';\s*\n']
+    max_chars: 300
   challenged_act:
     start: '(?:wobec|na)\s+(?:treści|czynności|zaniechani\w*|ogłoszeni\w*|wyboru|odrzuceni\w*|wykluczeni\w*|unieważnieni\w*)'
     include_start: true
@@ -105,6 +114,12 @@ fields:
           - {value: 4, priority: 1, keywords: ['opublikował\w*\s+Specyfikac', 'ustaleni\w*\s+treści\s+(?:SWZ|Specyfikacji)', 'treści\s+SWZ', 'Specyfikacj\w*\s+Warunków']}
           - {value: 12, priority: 1, keywords: ['projektowan\w*\s+postanowie\w*\s+umowy', 'istotn\w*\s+postanowie\w*\s+umowy', 'postanowie\w*\s+(?:projektu\s+)?umowy', 'wzor\w*\s+umowy', 'projekt\w*\s+umowy']}
           - {value: 11, priority: 0, keywords: ['Opis\w*\s+Przedmiotu\s+Zamówienia', 'opisani\w*\s+przedmiotu', '\bOPZ\b']}
+      - type: keyword_map
+        scope: appeal_against
+        options: *reasons
+      - type: keyword_map
+        scope: charges_list
+        options: *reasons
       - type: keyword_map
         scope: challenged_act
         options: *reasons
