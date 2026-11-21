@@ -437,6 +437,22 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             return {"field": name, "boxes": [], "reason": "Skan bez warstwy tekstowej: źródło zaznaczamy w zakładce Tekst."}
         return {"field": name, "boxes": locate(item["path"], field, result.get("text") or "")}
 
+    @app.get("/api/documents/{doc_id}/anonymized.pdf")
+    def anonymized(doc_id: str) -> Response:
+        """The PDF with personal data blacked out; names are also taken from the other documents of the same case."""
+        from ..anonymize import redact
+        from ..cases import key
+
+        item = store.get(doc_id)
+        result = item.get("result") or {}
+        if result.get("ocr"):
+            raise HTTPException(status_code=400, detail="Anonimizacja wymaga PDF z warstwą tekstową.")
+        reference = key((result.get("case_values") or {}).get("reference"))
+        related = [f for other in store.items.values() if other["id"] != doc_id and reference and key(((other.get("result") or {}).get("case_values") or {}).get("reference")) == reference for f in other["result"].get("fields") or []]
+        data, counts = redact(item["path"], result.get("fields") or [], result.get("text") or "", related)
+        name = Path(result.get("filename") or "dokument.pdf").stem + "_anonimizacja.pdf"
+        return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Redacted": json.dumps(counts), "Access-Control-Expose-Headers": "X-Redacted"})
+
     @app.get("/api/documents/{doc_id}/json")
     def download(doc_id: str) -> Response:
         """Download the output JSON named after the source PDF."""

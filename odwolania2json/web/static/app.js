@@ -540,6 +540,28 @@ async function exportAll() {
   }
 }
 
+/** Download the current PDF with personal data blacked out and report what was covered. */
+async function anonymizePdf() {
+  const doc = state.current;
+  if (!doc) return;
+  try {
+    const response = await busy("Zaczerniam dane osobowe…", () => fetch(`/api/documents/${doc.id}/anonymized.pdf`));
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || response.statusText);
+    const counts = JSON.parse(response.headers.get("X-Redacted") || "{}");
+    const url = URL.createObjectURL(await response.blob());
+    const a = Object.assign(document.createElement("a"), { href: url, download: doc.filename.replace(/\.pdf$/i, "_anonimizacja.pdf") });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const names = { osoba: "nazwiska i imiona", dane: "dane z pól", pesel: "PESEL", email: "e-maile", telefon: "telefony" };
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    toast(total ? `Zaczerniono ${total}: ${Object.entries(counts).map(([k, v]) => `${names[k] || k} ${v}`).join(", ")}` : "Nie znaleziono danych osobowych do zaczernienia");
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 /** Copy the current JSON to the clipboard. */
 async function copyJson() {
   if (!state.current) return toast("Brak JSON do skopiowania");
@@ -1025,6 +1047,7 @@ function bind() {
     refreshCases();
   });
   $("#btn-copy").addEventListener("click", copyJson);
+  $("#btn-anon").addEventListener("click", anonymizePdf);
   $("#d-copy").addEventListener("click", copyJson);
   $("#btn-llm").addEventListener("click", refineWithLlm);
   $("#btn-summary").addEventListener("click", showSummary);
