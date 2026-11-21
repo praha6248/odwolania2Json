@@ -114,13 +114,17 @@ class Processor:
         """Process every PDF under input_dir, mirroring the folder tree into output_dir."""
         input_dir, output_dir = Path(input_dir), Path(output_dir)
         results = []
-        for pdf in sorted(p for p in input_dir.rglob("*") if p.suffix.lower() == ".pdf"):
-            result = self.process_pdf(pdf)
-            results.append(result)
+        for pdf in sorted(p for p in input_dir.rglob("*") if p.suffix.lower() == ".pdf" and p.is_file()):
             relative = pdf.relative_to(input_dir).with_suffix(".json")
+            try:
+                result = self.process_pdf(pdf)
+            except Exception as exc:
+                log.exception("%s: processing failed", pdf.relative_to(input_dir))
+                result = DocumentResult(path=pdf, doc_type=None, classification=Classification(None, 0.0), data=None, error=str(exc))
+            results.append(result)
             if result.data is not None:
                 write_json(output_dir / relative, result.data)
-            elif self.settings.unmatched_output == "empty_json" and result.error is None:
+            elif self.settings.unmatched_output == "empty_json":
                 write_json(output_dir / relative, {})
             if trace_dir is not None:
                 write_json(Path(trace_dir) / relative.with_suffix(".trace.json"), result.trace())
