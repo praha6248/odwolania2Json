@@ -94,7 +94,7 @@ fields:
   czynnosc_powod_id:
     description: >-
       Reason id 1-12 of the challenged act, based only on the first charge. 1 odrzucenie oferty, 2 wybór oferty,
-      3 wykluczenie wykonawcy, 4 publikacja SWZ, 5 modyfikacja SWZ, 6 odpowiedzi i wyjaśnienia do SWZ,
+      3 wykluczenie wykonawcy, 4 publikacja SWZ, 5 modyfikacja SWZ, 6 odpowiedzi/wyjaśnienia do SWZ,
       7 zaniechanie odrzucenia oferty, 8 zaniechanie wykluczenia, 9 unieważnienie postępowania,
       10 zaniechanie unieważnienia, 11 opis przedmiotu zamówienia (OPZ), 12 projektowane postanowienia umowy.
     normalize: [int]
@@ -138,7 +138,7 @@ fields:
           3: Decyzja o wykluczeniu wykonawcy
           4: Publikacja specyfikacji warunków zamówienia (SWZ)
           5: Modyfikacja treści SWZ
-          6: Odpowiedzi i wyjaśnienia do SWZ
+          6: Odpowiedzi/wyjaśnienia do SWZ
           7: Zaniechanie odrzucenia oferty
           8: Zaniechanie wykluczenia wykonawcy
           9: Decyzja o unieważnieniu postępowania
