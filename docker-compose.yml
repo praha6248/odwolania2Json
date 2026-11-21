@@ -1,0 +1,26 @@
+services:
+  web:
+    build: .
+    image: odwolania2json:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./config:/app/config
+      - ./input:/app/input
+      - ./output:/app/output
+    restart: unless-stopped
+
+  batch:
+    image: odwolania2json:latest
+    profiles: ["batch"]
+    command: ["python", "-m", "odwolania2json", "run", "--input", "/app/input", "--output", "/app/output"]
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./config:/app/config
+      - ./input:/app/input
+      - ./output:/app/output

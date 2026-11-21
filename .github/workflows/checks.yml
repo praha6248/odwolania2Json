@@ -1,0 +1,30 @@
+name: checks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: python -m pyflakes odwolania2json tools packaging tests
+      - name: Unit and end-to-end tests
+        run: python -m pytest -q
+      - name: CLI smoke test (input -> output)
+        run: |
+          mkdir -p smoke/input/case1
+          cp tests/fixtures/przyklad_41/*.pdf smoke/input/case1/
+          python -m odwolania2json run --input smoke/input --output smoke/output
+          test -f smoke/output/case1/odwolanie.json
+          test -f smoke/output/case1/pelnomocnictwo.json
+          test -f smoke/output/case1/potwierdzenie_przelewu.json
