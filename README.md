@@ -65,7 +65,9 @@ docker compose --profile batch run --rm batch     # ./input -> ./output
 
 ### Aplikacja desktopowa i aktualizacje
 
-Na stronie projektu (GitHub Pages) i w zakładce **Releases** są instalator Windows, paczka przenośna Windows (`.zip`) oraz paczka Linux (`.tar.gz`) z sumami SHA-256. Aplikacja sprawdza najnowsze wydanie na GitHubie i sygnalizuje aktualizację ikoną dzwonka. Instalator nie nadpisuje lokalnej konfiguracji w `config/`.
+Na stronie projektu (GitHub Pages) i w zakładce **Releases** są instalator Windows, paczka przenośna Windows (`.zip`) oraz paczka Linux (`.tar.gz`) z sumami SHA-256.
+
+**Aktualizacje małymi łatkami:** każde wydanie zawiera też `Odwolania2JSON-<platforma>.pack` i `.manifest.json`. Zainstalowana aplikacja (dzwonek w prawym górnym rogu) porównuje swoje pliki z manifestem i **pobiera tylko pliki, które się zmieniły**, przez zapytania HTTP Range. Przy zmianie samego kodu to zwykle kilkaset kB. Każdy plik jest weryfikowany SHA-256, podmiana następuje po zamknięciu aplikacji, a foldery `config/`, `input/` i `output/` nie są ruszane. Instalator również nie nadpisuje lokalnej konfiguracji.
 
 ## Architektura
 
@@ -98,7 +100,7 @@ Wystarczy nowy plik `config/document_types/<typ>.yaml`. Przykład i opis wszystk
 
 ## LLM (opcjonalnie)
 
-Reguły nie potrzebują sieci ani GPU. Model językowy włącza się zmiennymi środowiskowymi (wzór w `.env.example`):
+Reguły nie potrzebują sieci ani GPU, a LLM jest **opcjonalny i domyślnie wyłączony**. Włącza się go w interfejsie (*Ustawienia*: przełącznik, adres, model, klucz i przycisk „Testuj połączenie”), dla pojedynczego dokumentu przyciskiem *Uzupełnij przez LLM*, w CLI flagą `--llm` albo zmiennymi środowiskowymi (wzór w `.env.example`):
 
 ```bash
 O2J_LLM_ENABLED=true
