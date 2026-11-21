@@ -33,7 +33,13 @@ classify:
 sections:
   header:
     start: '\A'
-    end: ['Działając\s+w\s+imieniu', 'wnoszę\s+(?:o|odwołanie)']
+    end: ['Działając\s+(?:w\s+imieniu|na\s+podstawie)', 'wnoszę\s+(?:o|odwołanie)', '(?:wnosi|wnosimy|składa\w*)\s+(?:niniejszym\s+)?odwołanie']
+    max_chars: 5000
+  intro:
+    # opening part of the appeal (parties, petitum, own notice); the justification often cites other procedures
+    start: '\A'
+    end: ['^\s*U\s*Z\s*A\s*S\s*A\s*D\s*N\s*I\s*E\s*N\s*I\s*E\b']
+    max_chars: 6000
   dotyczy:
     start: '^\s*dotyczy\s*:?'
     end: ['^\s*O\s*D\s*W\s*O\s*Ł\s*A\s*N\s*I\s*E\s*$', '^\s*Wartość\s+zamówienia', '^\s*Wpis\s+od', '^\s*Działając', '^\s*Prezes\s+Krajowej', '^\s*Krajowa\s+Izba', '^[A-ZĄĆĘŁŃÓŚŹŻ][^\n,]{1,40},\s+(?:dnia\s+)?\d']
@@ -44,10 +50,21 @@ sections:
   first_act_sentence:
     start: 'Zamawiający\s+(?:[\wąćęłńóśźż]+\s+){0,6}?w\s+dniu'
     include_start: true
-    end: ['\n\s*Zarzut', '\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])', ';', '\n\s*\d\)']
+    end: ['\n\s*Zarzut', '\.\s*\n', '\.\s+(?=(?-i:[A-ZĄĆĘŁŃÓŚŹŻ]))', ';', '\n\s*\d\)']
+    max_chars: 400
+  act_notice:
+    # sentences dating the information about the challenged act (used only when the act sentence has no date)
+    start: ['Zamawiający\s+(?:przekazał|przesłał|poinformował|zawiadomił|udostępnił)\w*\s+[^.;]{0,120}?(?=w\s+dniu)', 'okolicznościach\s+stanowiących\s+podstawę\s+(?:do\s+)?wniesienia\s+odwołania', '(?:powziął|powzięła|powzięli|otrzymał|uzyskał)\w*\s+(?:wiadomość|informacj\w*)?[^.;]{0,80}?(?=w\s+dniu)']
+    include_start: true
+    end: ['\.\s+(?=(?-i:[A-ZĄĆĘŁŃÓŚŹŻ]))', ';', '\n\s*\n']
+    max_chars: 300
+  act_statement:
+    # formula required by art. 516 Pzp: "czynności lub zaniechania czynności, którym Odwołujący zarzuca niezgodność z przepisami ustawy, to ..."
+    start: '(?:czynnoś\w*|zaniechani\w*)[^.:]{0,80}?zarzuca\w*\s+(?:się\s+)?niezgodność\s+z\s+przepisami\s+(?:ustawy|Pzp|prawa)[^:.]{0,40}?(?:,\s*(?:to|jest|są)\b|:)'
+    end: ['\.\s*\n', '\.\s+(?=(?-i:[A-ZĄĆĘŁŃÓŚŹŻ]))', ';', '\n\s*\d+[.)]\s']
     max_chars: 400
   appeal_against:
-    start: '(?:wnoszę|składam|wnosi)\s+odwołanie\s+(?:na|od|wobec)'
+    start: '(?:wnoszę|wnosimy|składam|składamy|wnosi)\s+(?:niniejszym\s+)?odwołanie\s+(?:na|od|wobec)'
     include_start: true
     end: ['\n\s*II\.', 'zarzucam', '\n\s*(?:2[).]|b\))', ';\s*\n']
     max_chars: 500
@@ -58,7 +75,7 @@ sections:
   challenged_act:
     start: '(?:wobec|na)\s+(?:treści|czynności|zaniechani\w*|ogłoszeni\w*|wyboru|odrzuceni\w*|wykluczeni\w*|unieważnieni\w*)'
     include_start: true
-    end: ['\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])']
+    end: ['\.\s*\n', '\.\s+(?=(?-i:[A-ZĄĆĘŁŃÓŚŹŻ]))']
     max_chars: 400
   first_charge:
     start: 'Zarzut\s+nr\s*1'
@@ -73,7 +90,7 @@ fields:
     extract:
       - type: regex
         scope: header
-        pattern: '^\s*[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?,?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4})(?:\s*r(?:oku|\.)?)?\s*$'
+        pattern: '^\s*[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?,?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:\s*r(?:oku|\.)?)?\s*$'
         ignore_case: false
 
   miejscowosc:
@@ -83,14 +100,14 @@ fields:
     extract:
       - type: regex
         scope: header
-        pattern: '^\s*([A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?),?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}(?:\s*r(?:oku|\.)?)?\s*$'
+        pattern: '^\s*([A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?),?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(?:\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:\s*r(?:oku|\.)?)?\s*$'
         ignore_case: false
 
   czynnosc_dzien:
     description: Date of the challenged act from the first charge (ISO).
     extract:
       - type: dated_event
-        scope: [first_act_item, first_act_sentence]
+        scope: [first_act_item, first_act_sentence, act_notice]
         pattern: '((?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4}))'
 
   czynnosc_powod_id:
@@ -104,17 +121,17 @@ fields:
       - type: keyword_map
         scope: [first_act_item, first_act_sentence]
         options: &reasons
-          - {value: 7, priority: 3, keywords: ['zaniecha\w*\s+odrzucenia', 'nie\s+odrzucił']}
-          - {value: 8, priority: 3, keywords: ['zaniecha\w*\s+wykluczenia', 'nie\s+wykluczył']}
-          - {value: 10, priority: 3, keywords: ['zaniecha\w*\s+unieważnienia', 'nie\s+unieważnił']}
+          - {value: 7, priority: 3, keywords: ['zaniecha\w*\s+(?:czynności\s+)?odrzucenia', 'nie\s+odrzucił']}
+          - {value: 8, priority: 3, keywords: ['zaniecha\w*\s+(?:czynności\s+)?wykluczenia', 'nie\s+wykluczył']}
+          - {value: 10, priority: 3, keywords: ['zaniecha\w*\s+(?:czynności\s+)?unieważnienia', 'nie\s+unieważnił']}
           - {value: 6, priority: 2, keywords: ['odpowiedzi\w*\s+(?:i\s+wyjaśnie\w*\s+)?(?:do|na)', 'wyjaśnie\w*\s+treści\s+(?:SWZ|Specyfikacji)']}
           - {value: 5, priority: 2, keywords: ['zmodyfikował', 'modyfikacj\w*\s+treści', 'zmian\w*\s+treści\s+(?:SWZ|Specyfikacji)']}
           - {value: 1, priority: 1, keywords: ['odrzuc\w*\s+(?:oferty|ofert)', 'odrzuceniu']}
           - {value: 3, priority: 1, keywords: ['wyklucz\w*', 'wykluczeniu']}
           - {value: 9, priority: 1, keywords: ['unieważni\w*\s+postępowani']}
           - {value: 2, priority: 1, keywords: ['wyb(?:ór|or\w*)\s+(?:jako\s+najkorzystniejszej\s+)?oferty', 'najkorzystniejsz']}
-          - {value: 4, priority: 1, keywords: ['opublikował\w*\s+Specyfikac', 'ustaleni\w*\s+treści\s+(?:SWZ|Specyfikacji)', 'treści\s+SWZ', 'Specyfikacj\w*\s+Warunków']}
-          - {value: 12, priority: 1, keywords: ['projektowan\w*\s+postanowie\w*\s+umowy', 'istotn\w*\s+postanowie\w*\s+umowy', 'postanowie\w*\s+(?:projektu\s+)?umowy', 'wzor\w*\s+umowy', 'projekt\w*\s+umowy']}
+          - {value: 4, priority: 1, keywords: ['opublikował\w*\s+Specyfikac', 'ustaleni\w*\s+treści\s+(?:SWZ|Specyfikacji)', 'treści\s+SWZ', '(?<!do\s)Specyfikacj\w*\s+(?:Istotnych\s+)?Warunków']}
+          - {value: 12, priority: 1, keywords: ['projektowan\w*\s+postanowie\w*\s+umowy', 'istotn\w*\s+postanowie\w*\s+umowy', 'postanowie\w*\s+(?:projektu\s+)?umowy', 'wzor\w*\s+umowy', 'projek[tc]\w*\s+umowy']}
           - {value: 11, priority: 0, keywords: ['Opis\w*\s+Przedmiotu\s+Zamówienia', 'opisani\w*\s+przedmiotu', '\bOPZ\b']}
       - type: keyword_map
         scope: appeal_against
@@ -127,6 +144,9 @@ fields:
         options: *reasons
       - type: keyword_map
         scope: first_charge
+        options: *reasons
+      - type: keyword_map
+        scope: act_statement
         options: *reasons
 
   czynnosc_opis:
@@ -170,6 +190,13 @@ fields:
       - type: regex
         scope: [dotyczy, header]
         pattern: '(\d{4}\s*/\s*BZP\s*[\d ]{6,12}\d(?:\s*/\s*\d{1,2})?)'
+      - type: regex
+        scope: intro
+        pattern: '(?:nr|numer)\s+ogłoszenia[^;\n]{0,60}?(\d{4}\s*/\s*BZP\s*[\d ]{6,12}\d(?:\s*/\s*\d{1,2})?)'
+      - type: regex
+        scope: intro
+        # the procedure's own notice described in the body ("Ogłoszenie o zamówieniu zostało zamieszczone w BZP ... pod numerem")
+        pattern: '(?:ogłoszeni\w*\s+o\s+zamówieniu|ogłoszon\w*|opublikowan\w*|zamieszczon\w*)[^;]{0,60}?Biuletyn\w*\s+Zamówień\s+Publicznych[^;]{0,80}?(\d{4}\s*/\s*BZP\s*[\d ]{6,12}\d(?:\s*/\s*\d{1,2})?)'
 
   numer_ted:
     optional: true
@@ -181,17 +208,23 @@ fields:
         pattern: '(\d{4}\s*/\s*S\s*\d{1,3}\s*[-–]\s*\d{5,7})'
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:TED|Dzienniku\s+Urzędowym\s+(?:UE|Unii\s+Europejskiej))\s*:?\s*(?:nr\s*|pod\s+numerem\s*)?(\d{5,7}\s*[-–]\s*\d{4})'
+        pattern: &ted_named '(?:TED|Dziennik\w*\s+Urzędow\w*\s+(?:UE|Unii\s+Europejskiej))(?:[^;]{0,100}?(?:nr|numer\w*)\b)?\s*:?\s*(\d{5,7}\s*[-–]\s*\d{4})\b'
+      - type: regex
+        scope: intro
+        pattern: '(?:ogłoszon\w*|opublikowan\w*|zamieszczon\w*)[^;]{0,60}?Dziennik\w*\s+Urzędow\w*\s+(?:UE|Unii\s+Europejskiej)[^;]{0,80}?(\d{4}\s*/\s*S\s*\d{1,3}\s*[-–]\s*\d{5,7})'
+      - type: regex
+        scope: intro
+        pattern: *ted_named
 
   numer_postepowania:
     description: Reference number of the procurement procedure.
-    normalize: [strip]
+    normalize: [strip, reference]
     extract:
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|postępowani\w*\s+nr|sygn\w*\.?)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+(?:sprawy|postępowania)|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|postępowani\w*\s+nr|sygn\w*\.?)\s*:?\s*([A-Za-z0-9](?:[A-Za-z0-9./\-_]|[ \t]/[ \t](?=[A-Za-z0-9]{1,4}\b))*[A-Za-z0-9])'
       - type: regex
-        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+postępowania|postępowani\w*\s+nr)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+(?:sprawy|postępowania)|numer\s+postępowania|postępowani\w*\s+nr)\s*:?\s*([A-Za-z0-9](?:[A-Za-z0-9./\-_]|[ \t]/[ \t](?=[A-Za-z0-9]{1,4}\b))*[A-Za-z0-9])'
 
   tytul:
     description: Title of the procurement.
@@ -199,10 +232,15 @@ fields:
     extract:
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:pn\.?|pod\s+nazwą|nazwa\s+zamówienia|przedmiotem\s+jest)\s*:?\s*[„"“]((?:[^„”"]|„[^”"]*[”"]){5,400}?)(?:[”"]|\s*\((?=post))'
+        pattern: '(?:pn\.?|\bpt\.|pod\s+(?:nazwą|tytułem)|nazwa\s+zamówienia|przedmiotem\s+jest)\s*:?\s*[„"“]((?:[^„”"]|„[^”"]*[”"]){5,400}?)(?:[”"]|\s*\((?=post))'
         dotall: true
       - type: regex
-        pattern: '(?:pn\.?|pod\s+nazwą|przedmiotem\s+jest)\s*:?\s*[„"“]((?:[^„”"]|„[^”"]*[”"]){5,400}?)(?:[”"]|\s*\((?=post))'
+        scope: [dotyczy, header]
+        # title without quotation marks, ending before the reference number or the notice
+        pattern: '(?:\bpn\.|\bpt\.|pod\s+(?:nazwą|tytułem))\s*:?\s+(?![„"“])((?-i:[A-ZĄĆĘŁŃÓŚŹŻ0-9])(?:(?!\n\s*\n)[^„”"“;]){5,300}?)(?=\s*\((?:znak|nr|numer|sygn|post)|[.,]\s*(?:Numer|Nr|Znak|Ogłoszeni|Sygn|ogłoszon|prowadzon|realizowan|w\s+trybie)|\s+(?:ogłoszon|prowadzon|realizowan)\w*\s|\.\s*\n)'
+        dotall: true
+      - type: regex
+        pattern: '(?:pn\.?|\bpt\.|pod\s+(?:nazwą|tytułem)|przedmiotem\s+jest)\s*:?\s*[„"“]((?:[^„”"]|„[^”"]*[”"]){5,400}?)(?:[”"]|\s*\((?=post))'
         dotall: true
       - type: regex
         scope: [dotyczy, header]

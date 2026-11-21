@@ -126,11 +126,11 @@ Wzorce dopasowują się bez względu na wielkość liter i polskie znaki, więc 
 | `attorneys` | | pełnomocnicy z tytułem zawodowym i PESEL |
 | `dated_event` | `pattern`, `scope` | pierwsza data zdarzenia w zakresie |
 
-`scope` przyjmuje nazwę sekcji albo listę nazw (używana jest pierwsza znaleziona sekcja).
+`scope` przyjmuje nazwę sekcji albo listę nazw (sekcje są sprawdzane po kolei, aż w którejś ekstraktor znajdzie wartość).
 
 ## Normalizatory
 
-`strip`, `strip_quotes`, `digits`, `account`, `date_iso`, `amount`, `ted`, `bzp`, `int`, `person_name`, `entity_name`. Pełną listę wypisuje `python -m odwolania2json types`.
+`strip`, `strip_quotes`, `digits`, `account`, `date_iso`, `amount`, `ted`, `bzp`, `reference`, `int`, `person_name`, `entity_name`. Pełną listę wypisuje `python -m odwolania2json types`.
 
 ## Własny ekstraktor w Pythonie (gdy YAML nie wystarcza)
 
