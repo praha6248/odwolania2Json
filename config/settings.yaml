@@ -6,7 +6,7 @@ plugins:
 llm:
   enabled: false
   base_url: http://localhost:11434/v1
-  model: qwen2.5:7b-instruct
+  model: hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0
   api_key: ""
   timeout: 120
   max_chars: 12000

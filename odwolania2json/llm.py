@@ -44,6 +44,23 @@ class LLMClient:
             payload = json.loads(response.read().decode())
         return payload["choices"][0]["message"]["content"]
 
+    def models(self) -> list[str]:
+        """List model ids served by the endpoint."""
+        request = urllib.request.Request(f"{self.base_url}/models", headers={"Authorization": f"Bearer {self.api_key or 'none'}"})
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            return [m.get("id") for m in json.loads(response.read().decode()).get("data", [])]
+
+    def check(self) -> dict[str, Any]:
+        """Run a tiny extraction to verify connectivity, JSON mode and latency."""
+        import time
+
+        started = time.perf_counter()
+        answer = self.chat(
+            "Zwracasz wyłącznie JSON.",
+            'Z tekstu "Odwołujący: Alfa sp. z o.o., NIP 1234567890" wyodrębnij {"nazwa": ..., "nip": ...}.',
+        )
+        return {"model": self.model, "seconds": round(time.perf_counter() - started, 2), "answer": json.loads(_strip_fences(answer))}
+
     def refine(self, doc_type: DocumentType, text: str, data: dict[str, Any], ctx: Context) -> dict[str, Any]:
         """Ask the model to fill only fields left empty by the rules for those listed in the type's llm.fields."""
         targets = [f for f in doc_type.llm.get("fields", []) if ctx.value(f) in (None, "", [])]
