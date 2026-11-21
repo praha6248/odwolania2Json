@@ -60,3 +60,29 @@ def test_cases_manual_edit_and_assistant(monkeypatch):
     client.put("/api/llm", json={"enabled": False, "base_url": "http://127.0.0.1:9/v1", "model": "m"})
     answer = client.post("/api/ask", json={"question": "Kto reprezentuje odwołującego?"}).json()
     assert answer["answer"].startswith("Kancelaria") and answer["sources"][0]["filename"].endswith(".pdf")
+
+
+def test_page_previews_are_rendered(monkeypatch):
+    """PDF pages are served as PNG images for the preview."""
+    monkeypatch.setenv("O2J_NO_UPDATE_CHECK", "1")
+    client = TestClient(create_app())
+    pdf = FIXTURES / "przyklad_07" / "potwierdzenie_przelewu.pdf"
+    doc = client.post("/api/documents", files=[("files", (pdf.name, pdf.read_bytes(), "application/pdf"))]).json()[0]
+    assert client.get(f"/api/documents/{doc['id']}/pages").json()["pages"] >= 1
+    image = client.get(f"/api/documents/{doc['id']}/pages/1.png")
+    assert image.headers["content-type"] == "image/png" and image.content[:4] == b"\x89PNG"
+    assert client.get(f"/api/documents/{doc['id']}/pages/99.png").status_code == 404
+
+
+def test_parallel_page_rendering_is_safe(monkeypatch):
+    """Concurrent preview requests must not crash the PDF renderer (pdfium is not thread-safe)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setenv("O2J_NO_UPDATE_CHECK", "1")
+    client = TestClient(create_app())
+    pdf = FIXTURES / "przyklad_41" / "odwolanie.pdf"
+    doc = client.post("/api/documents", files=[("files", (pdf.name, pdf.read_bytes(), "application/pdf"))]).json()[0]
+    pages = client.get(f"/api/documents/{doc['id']}/pages").json()["pages"]
+    with ThreadPoolExecutor(8) as pool:
+        codes = list(pool.map(lambda n: client.get(f"/api/documents/{doc['id']}/pages/{n}.png").status_code, range(1, pages + 1)))
+    assert codes == [200] * pages

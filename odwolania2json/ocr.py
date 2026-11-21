@@ -9,11 +9,13 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("odwolania2json.ocr")
+PDFIUM_LOCK = threading.Lock()
 
 OCR_FIXES = [
     (r"\bSp[óo][fłlt1]k(?=[aęiąo])", "Spółk"),
@@ -84,9 +86,12 @@ def render_pages(path: Path, scale: float, pages: list[int] | None = None) -> li
     """Render PDF pages to RGB numpy arrays and straighten them."""
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(str(path))
-    indices = pages if pages is not None else list(range(len(pdf)))
-    return [deskew(pdf[i].render(scale=scale).to_numpy()[..., :3]) for i in indices]
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
+        indices = pages if pages is not None else list(range(len(pdf)))
+        images = [pdf[i].render(scale=scale).to_numpy()[..., :3].copy() for i in indices]
+        pdf.close()
+    return [deskew(image) for image in images]
 
 
 LAYOUT_VERSION = 5
