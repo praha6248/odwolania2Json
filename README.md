@@ -119,6 +119,9 @@ docker compose --profile batch run --rm batch     # ./input -> ./output
 
 Na stronie projektu (GitHub Pages) i w zakładce **Releases** są instalator Windows, paczka przenośna Windows (`.zip`) oraz paczka Linux (`.tar.gz`) z sumami SHA-256. W folderze aplikacji są dwa programy: `Odwolania2JSON` otwiera okno (bez konsoli), a `odwolania2json-cli` działa w terminalu z tymi samymi poleceniami co `python -m odwolania2json` (np. `odwolania2json-cli run -i input -o output`).
 
+W Linuksie okno aplikacji korzysta z systemowego GTK 3 i WebKit2GTK. Na Ubuntu 24.04 lub Debianie 12 wymagane pakiety zainstalujesz poleceniem `sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1`. Obsługiwana jest też wersja WebKit2GTK 4.0.
+
+
 **Aktualizacje małymi łatkami:** każde wydanie zawiera też `Odwolania2JSON-<platforma>.pack` i `.manifest.json`. Zainstalowana aplikacja (dzwonek w prawym górnym rogu) porównuje swoje pliki z manifestem i **pobiera tylko pliki, które się zmieniły**, przez zapytania HTTP Range. Przy zmianie samego kodu to zwykle kilkaset kB. Każdy plik jest weryfikowany SHA-256, podmiana następuje po zamknięciu aplikacji, a foldery `config/`, `input/` i `output/` nie są ruszane. Instalator również nie nadpisuje lokalnej konfiguracji.
 
 ## Architektura

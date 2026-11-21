@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -56,6 +57,24 @@ def main() -> int:
     if not wait_until_up(url):
         print("Server did not start", file=sys.stderr)
         return 1
+    if sys.platform.startswith("linux"):
+        # GTK and WebKit must load the distribution's matching libraries, outside the frozen runtime.
+        env = os.environ.copy()
+        if getattr(sys, "frozen", False):
+            original = env.pop("LD_LIBRARY_PATH_ORIG", "")
+            if original:
+                env["LD_LIBRARY_PATH"] = original
+            else:
+                env.pop("LD_LIBRARY_PATH", None)
+        host = Path(getattr(sys, "_MEIPASS", root)) / "packaging" / "linux_window.py"
+        try:
+            result = subprocess.run(["/usr/bin/python3", "-I", str(host), url], env=env)
+            if result.returncode:
+                print("Okno wymaga GTK 3, PyGObject i WebKit2GTK 4.1 lub 4.0.", file=sys.stderr)
+            return result.returncode
+        finally:
+            server.should_exit = True
+            thread.join(timeout=5)
     try:
         import webview
 
