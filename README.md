@@ -133,7 +133,7 @@ python -m odwolania2json eval <katalog dane/ z repozytorium UZP>
 | 12 dokumentów spoza puli UZP + 106 orzeczeń KIO + 5 innych pism | 100% odrzuconych |
 | symulowane skany (150 DPI, rozmycie, obrót) | ok. 0.97 |
 
-Same modele LLM bez reguł (`tools/eval_llm.py`, 16 spraw): Bielik-4.5B F1 0.78, Bielik-1.5B F1 0.47. Dlatego LLM służy tylko do weryfikacji i funkcji dodatkowych, a wynik JSON pochodzi z reguł.
+Same modele LLM bez reguł (`tools/eval_llm.py`, 16 spraw): Bielik-4.5B F1 0.78, Qwen3-1.7B 0.64, Qwen3-0.6B 0.53, Bielik-1.5B 0.47, Qwen2.5-1.5B 0.37 (szczegóły i opis wykorzystanego LLM: [docs/llm.md](docs/llm.md)). Dlatego LLM służy tylko do weryfikacji i funkcji dodatkowych, a wynik JSON pochodzi z reguł.
 
 ## Rozwój
 

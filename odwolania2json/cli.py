@@ -98,10 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         args.input.mkdir(parents=True, exist_ok=True)
         results = processor.process_tree(args.input, args.output, args.trace)
         done = sum(r.data is not None for r in results)
-        print(f"Processed {len(results)} PDF(s), wrote {done} JSON file(s) to {args.output}")
+        unmatched = [r for r in results if r.data is None and r.error is None]
+        empty = len(unmatched) if processor.settings.unmatched_output == "empty_json" else 0
+        print(f"Processed {len(results)} PDF(s): {done} recognized, {len(unmatched)} outside the configured types"
+              f"{f' (empty JSON {{}} written)' if empty else ''}; output in {args.output}")
         for result in results:
             if result.data is None:
-                print(f"  {result.path.name}: {result.message}")
+                suffix = " Zapisano pusty JSON {}." if empty and result.error is None else ""
+                print(f"  {result.path.name}: {result.message}{suffix}")
         return 0
 
     if args.command == "extract":
