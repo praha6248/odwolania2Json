@@ -79,7 +79,8 @@ function reviewItems(doc) {
     if (f.source === "manual") return false;
     if (f.llm_check === "rozbieżne" || f.llm_check === "uzupełnione") return true;
     if (f.ambiguous) return true;
-    return !optional.has(f.field) && (f.value === null || f.value === "" || (Array.isArray(f.value) && !f.value.length)) && f.review_context;
+    const empty = f.value === null || f.value === undefined || (typeof f.value === "string" && !f.value.trim()) || (Array.isArray(f.value) && !f.value.length);
+    return !optional.has(f.field) && empty;
   });
 }
 
@@ -209,7 +210,7 @@ function renderTable() {
 
 /** Tell whether a case needs attention (party mismatch, missing documents or no reference). */
 function needsAttention(c) {
-  return !c.reference || !c.consistent || c.missing_types.length > 0 || c.formal === "error";
+  return !c.reference || !c.consistent || c.missing_types.length > 0 || ["warn", "error"].includes(c.formal);
 }
 
 const CHECK_STATUS = { ok: ["ok", "Bez uwag"], warn: ["warn", "Do sprawdzenia"], error: ["bad", "Błędy formalne"] };
@@ -340,8 +341,8 @@ function showDocNotice(doc) {
   } else {
     icon.className = "doc-modal-icon ok";
     icon.innerHTML = ICON_OK;
-    $("#doc-modal-title").textContent = `Dokument gotowy (${pct}% kompletności)`;
-    $("#doc-modal-body").innerHTML = `<p>Rozpoznano <b>${esc(doc.doc_label)}</b>. Wszystkie wymagane pola mają jednoznaczne źródło w dokumencie.</p>
+    $("#doc-modal-title").textContent = `Brak pól do weryfikacji (${pct}% kompletności)`;
+    $("#doc-modal-body").innerHTML = `<p>Rozpoznano <b>${esc(doc.doc_label)}</b>. Wszystkie wymagane pola mają wartość odczytaną przez reguły, bez sprzeczności. Wybrane wartości możesz sprawdzić w dokumencie.</p>
       <div class="doc-modal-tips">
         <div><b>Podgląd i JSON:</b> po lewej stronie widzisz strony PDF, a po prawej gotowy wynik JSON zgodny ze schematem UZP.</div>
         <div><b>Źródła w PDF:</b> otwórz zakładkę <b>Źródła</b> i kliknij dowolne pole, aby podświetlić wartość bezpośrednio na stronie dokumentu.</div>
@@ -456,13 +457,13 @@ function reviewReason(f) {
   if (f.llm_check === "rozbieżne") return "LLM odczytał inną wartość niż reguły";
   if (f.llm_check === "uzupełnione") return "Uzupełnione przez LLM, potwierdź";
   if (f.ambiguous) return "W dokumencie jest kilka pasujących wartości";
-  return "Reguły nie znalazły wartości";
+  return f.review_context ? "Reguły nie znalazły wartości" : "Brak wartości i źródła";
 }
 
 /** Render the review queue with editable values. */
 function renderReview(doc, items) {
   if (!items.length) {
-    $("#d-review").innerHTML = '<div class="empty-state"><b>Nic do weryfikacji</b><span>Wszystkie pola mają jednoznaczne źródło w dokumencie.</span></div>';
+    $("#d-review").innerHTML = '<div class="empty-state"><b>Nic do weryfikacji</b><span>Wszystkie wymagane pola mają wartość. Odczytane wartości i ich źródła sprawdzisz w zakładce Źródła.</span></div>';
     return;
   }
   $("#d-review").innerHTML = `<div class="review-list">${items.map((f) => {
@@ -471,12 +472,12 @@ function renderReview(doc, items) {
     const shown = f.value === null || f.value === undefined ? "" : complex ? JSON.stringify(f.value, null, 1) : String(f.value);
     const llm = f.llm_value === null || f.llm_value === undefined ? null : complex ? JSON.stringify(f.llm_value) : String(f.llm_value);
     const input = complex
-      ? `<textarea data-edit="${esc(f.field)}" aria-label="Wartość pola ${esc(f.field)}">${esc(shown)}</textarea>`
-      : `<input data-edit="${esc(f.field)}" value="${esc(shown)}" placeholder="brak wartości" aria-label="Wartość pola ${esc(f.field)}">`;
+      ? `<textarea data-edit="${esc(f.field)}" data-original="${esc(shown)}" aria-label="Wartość pola ${esc(f.field)}">${esc(shown)}</textarea>`
+      : `<input data-edit="${esc(f.field)}" data-original="${esc(shown)}" value="${esc(shown)}" placeholder="brak wartości" aria-label="Wartość pola ${esc(f.field)}">`;
     return `<div class="review-item ${done ? "done" : ""}">
       <div class="review-top"><span class="review-name">${esc(f.field)}</span><span class="status ${f.llm_check === "rozbieżne" ? "bad" : "warn"}">${esc(reviewReason(f))}</span></div>
       ${llm !== null ? renderDiff(f) : ""}
-      ${f.review_context || f.snippet ? `<div class="review-context">${esc(f.review_context || f.snippet)}</div>` : ""}
+      ${f.review_context || f.snippet ? `<div class="review-context">${esc(f.review_context || f.snippet)}</div>` : '<div class="review-context missing">Reguły nie znalazły ani wartości, ani pasującego fragmentu. Sprawdź dokument po lewej i wpisz wartość albo zostaw pole puste.</div>'}
       <div class="review-edit">${input}
         <button class="btn primary" data-save="${esc(f.field)}">Zapisz</button>
         ${llm !== null ? `<button class="btn" data-use-llm="${esc(f.field)}">Użyj wartości LLM</button>` : ""}
@@ -532,11 +533,11 @@ function renderSources(doc) {
       f.llm_check === "rozbieżne" ? '<span class="chip err">LLM: rozbieżne</span>' : "",
       f.ambiguous ? '<span class="chip none">niejednoznaczne</span>' : "",
     ].join("");
-    return `<div class="src ${clickable ? "clickable" : ""} ${state.located === f.field ? "located" : ""}" data-field="${i}" ${clickable ? 'tabindex="0"' : ""}>
+    return `<div class="src ${clickable ? "clickable" : ""} ${state.located === f.field ? "located" : ""}" data-field="${i}">
       <div class="src-top"><span class="src-name">${esc(f.field)}${flags}</span><span class="src-method">${esc(f.source)} · ${esc(f.method || "brak dopasowania")}</span></div>
       <div class="src-value">${value === null || value === undefined ? '<span class="muted">null</span>' : esc(value)}</div>
       ${f.snippet ? `<div class="src-snip">„…${esc(f.snippet)}…”</div>` : ""}
-      ${clickable ? `<div class="src-actions"><span class="src-hint">Kliknij, aby zaznaczyć w dokumencie</span><button class="link-btn" data-show-text="${i}">Pokaż w tekście</button></div>` : ""}</div>`;
+      ${clickable ? `<div class="src-actions"><button type="button" class="btn small" data-locate-src="${i}">Zaznacz w PDF</button><button type="button" class="link-btn" data-show-text="${i}">Pokaż w tekście</button></div>` : ""}</div>`;
   }).join("")}</div>`;
 }
 
@@ -1145,7 +1146,10 @@ function bind() {
       return saveField(f.field, typeof f.llm_value === "object" ? JSON.stringify(f.llm_value) : f.llm_value);
     }
     if (accept) {
-      state.reviewDone.add(`${state.current.id}:${accept.dataset.accept}`);
+      const field = accept.dataset.accept;
+      const input = $(`[data-edit="${CSS.escape(field)}"]`);
+      state.reviewDone.add(`${state.current.id}:${field}`);
+      if (input && input.value !== input.dataset.original) return saveField(field, input.value);
       renderDetail(state.current);
     }
   });
