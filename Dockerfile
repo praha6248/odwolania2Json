@@ -1,5 +1,7 @@
 FROM python:3.13-slim
 
+LABEL org.opencontainers.image.source="https://github.com/praha6248/odwolania2Json"
+
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 O2J_NO_UPDATE_CHECK=1
 
 RUN apt-get update \
