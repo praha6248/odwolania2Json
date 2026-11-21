@@ -52,6 +52,8 @@ def pyinstaller() -> Path:
             "--collect-submodules", "uvicorn",
             "--collect-all", "pypdfium2",
             "--collect-all", "pypdfium2_raw",
+            "--collect-data", "wordfreq",
+            "--collect-all", "morfeusz2",
             "--hidden-import", "odwolania2json.extractors",
             "--distpath", str(DIST), "--workpath", str(ROOT / "build"), "--specpath", str(ROOT / "build"),
             str(ROOT / "packaging" / "launcher.py"),

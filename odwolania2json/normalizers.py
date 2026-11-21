@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
 
 MONTHS = {
@@ -202,3 +203,37 @@ def entity_name(value: str) -> str | None:
     text = re.sub(r"\(dalej[^)]*\)?", "", text, flags=re.I)
     text = text.strip(" ,;:").strip("„”\"")
     return text or None
+
+
+@lru_cache(maxsize=1)
+def _place_lexicon() -> dict[str, str]:
+    """Load place names from config/lexicons/miejscowosci.txt keyed by their accent-free lowercase form."""
+    import os
+    from pathlib import Path
+
+    from .fuzzy_re import fold
+
+    base = Path(os.environ.get("O2J_CONFIG_DIR") or Path(__file__).resolve().parent.parent / "config")
+    path = base / "lexicons" / "miejscowosci.txt"
+    if not path.exists():
+        return {}
+    names = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return {fold(name).lower(): name for name in names}
+
+
+@normalizer("place")
+def place(value: str) -> str | None:
+    """Restore Polish diacritics of known place names lost by OCR (Wroclaw -> Wrocław, Lódż -> Łódź)."""
+    from .fuzzy_re import fold
+
+    text = re.sub(r"\s+", " ", str(value)).strip(" ,.")
+    if not text:
+        return None
+    key = fold(text).lower()
+    lexicon = _place_lexicon()
+    if key in lexicon:
+        return lexicon[key]
+    for variant in (key.replace("t", "l"), key.replace("h", "l"), key.replace("f", "l")):
+        if variant in lexicon:
+            return lexicon[variant]
+    return text

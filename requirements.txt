@@ -8,3 +8,5 @@ rapidocr>=3.0
 onnxruntime>=1.20
 numpy>=2.0
 pillow>=10.0
+wordfreq>=3.1
+morfeusz2>=1.99

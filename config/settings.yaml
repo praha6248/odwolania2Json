@@ -17,3 +17,5 @@ ocr:
   min_chars_per_page: 40
   max_pages: 4
   scale: 2.0
+  spellcheck: true
+  spellcheck_min_zipf: 2.0
