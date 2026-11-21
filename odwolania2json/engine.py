@@ -21,6 +21,7 @@ class Evidence:
     snippet: str | None = None
     start: int | None = None
     end: int | None = None
+    ambiguous: bool = False
 
 
 @dataclass
@@ -31,6 +32,9 @@ class FieldResult:
     value: Any
     evidence: Evidence | None = None
     source: str = "rules"
+    review_context: str | None = None
+    llm_value: Any = None
+    llm_check: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the result for traces and the web UI."""
@@ -39,6 +43,10 @@ class FieldResult:
             "field": self.name,
             "value": self.value,
             "source": self.source,
+            "ambiguous": bool(ev and ev.ambiguous),
+            "review_context": self.review_context,
+            "llm_value": self.llm_value,
+            "llm_check": self.llm_check,
             "method": ev.method if ev else None,
             "snippet": ev.snippet if ev else None,
             "start": ev.start if ev else None,
@@ -150,8 +158,10 @@ def extract_regex(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | N
     value = match.group(group) if match.re.groups >= (group if isinstance(group, int) else 1) else match.group(0)
     if value is None:
         return None, None
-    start, end = match.span(group if match.re.groups else 0)
-    return value, Evidence("regex", snippet(text, start, end), offset + start, offset + end)
+    capture = group if match.re.groups else 0
+    start, end = match.span(capture)
+    ambiguous = "occurrence" not in spec and any(other.group(capture) not in (None, value) for other in matches)
+    return value, Evidence("regex", snippet(text, start, end), offset + start, offset + end, ambiguous)
 
 
 SEPARATOR = r"(?![\wąćęłńóśźż])[ \t]*[:\-–.]*[ \t.]*"
@@ -259,7 +269,43 @@ def run_field(ctx: Context, name: str, spec: dict[str, Any]) -> FieldResult:
         value = normalizers.apply(spec.get("normalize"), value)
         if value not in (None, "", []):
             return FieldResult(name, value, evidence)
-    return FieldResult(name, copy.deepcopy(spec.get("default")), None)
+    return FieldResult(name, copy.deepcopy(spec.get("default")), None, review_context=review_context(ctx, chain))
+
+
+def review_context(ctx: Context, chain: list[dict[str, Any]]) -> str | None:
+    """Return the document region a reviewer should read when a field stayed empty: its first section or label."""
+    for step in chain:
+        if step.get("scope"):
+            region, _ = ctx.scope(step["scope"])
+            if region.strip():
+                return region.strip()[:700]
+        for label in step.get("labels", []):
+            match = fx.search(anchor(step) + "(?:" + label + ")", ctx.text, flags_of(step))
+            if match:
+                return snippet(ctx.text, match.start(), match.end(), 120)
+    return None
+
+
+DERIVED = {"map", "ref", "present", "const"}
+
+
+def is_derived(spec: dict[str, Any]) -> bool:
+    """Tell whether a field is computed only from other fields (map, ref, present, const)."""
+    chain = spec.get("extract") or []
+    chain = chain if isinstance(chain, list) else [chain]
+    return bool(chain) and all(step.get("type") in DERIVED for step in chain)
+
+
+def rerender(doc_type: DocumentType, ctx: Context, overrides: dict[str, Any]) -> dict[str, Any]:
+    """Apply manual field values, recompute derived fields and render the output JSON again."""
+    for name, value in overrides.items():
+        spec = doc_type.fields.get(name, {})
+        value = normalizers.apply(spec.get("normalize"), value) if value not in (None, "") else None
+        ctx.results[name] = FieldResult(name, value, Evidence("manual"), source="manual")
+    for name, spec in doc_type.fields.items():
+        if is_derived(spec) and name not in overrides:
+            ctx.results[name] = run_field(ctx, name, spec)
+    return render(doc_type.template, {name: result.value for name, result in ctx.results.items()})
 
 
 def render(template: Any, values: dict[str, Any]) -> Any:

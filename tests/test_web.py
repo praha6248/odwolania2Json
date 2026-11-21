@@ -32,7 +32,31 @@ def test_llm_settings_are_optional_and_hide_the_key(monkeypatch):
     monkeypatch.delenv("O2J_LLM_ENABLED", raising=False)
     client = TestClient(create_app())
     view = client.put("/api/llm", json={"enabled": True, "base_url": "http://127.0.0.1:9/v1", "model": "m", "api_key": "secret"}).json()
-    assert view == {"enabled": True, "base_url": "http://127.0.0.1:9/v1", "model": "m", "has_key": True}
+    assert view == {"enabled": True, "mode": "fast", "base_url": "http://127.0.0.1:9/v1", "model": "m", "has_key": True}
     assert "secret" not in client.get("/api/llm").text
     assert client.post("/api/llm/check").json()["ok"] is False
     assert client.put("/api/llm", json={"enabled": False}).json()["enabled"] is False
+
+
+def test_cases_manual_edit_and_assistant(monkeypatch):
+    """Documents group into a case, a manual correction re-renders JSON, and the assistant cites retrieved fragments."""
+    monkeypatch.setenv("O2J_NO_UPDATE_CHECK", "1")
+    client = TestClient(create_app())
+    ids = {}
+    for pdf in sorted((FIXTURES / "przyklad_07").glob("*.pdf")):
+        doc = client.post("/api/documents", files=[("files", (pdf.name, pdf.read_bytes(), "application/pdf"))]).json()[0]
+        ids[doc["doc_type"]] = doc["id"]
+    cases = client.get("/api/cases").json()
+    assert len(cases) == 1 and cases[0]["reference"] == "ZP.388.2026" and cases[0]["consistent"] and not cases[0]["missing_types"]
+
+    edited = client.put(f"/api/documents/{ids['odwolanie']}/fields/czynnosc_powod_id", json={"value": "9"}).json()
+    assert edited["data"]["OdwolanieKIO"]["czynnosc_powod_id"] == 9
+    assert edited["data"]["OdwolanieKIO"]["czynnosc_opis"] == "Decyzja o unieważnieniu postępowania"
+    assert next(f for f in edited["fields"] if f["field"] == "czynnosc_powod_id")["source"] == "manual"
+
+    from odwolania2json import llm
+
+    monkeypatch.setattr(llm.LLMClient, "chat", lambda self, system, user: '{"answer": "Kancelaria Adwokacka [1]", "cited": [1]}')
+    client.put("/api/llm", json={"enabled": False, "base_url": "http://127.0.0.1:9/v1", "model": "m"})
+    answer = client.post("/api/ask", json={"question": "Kto reprezentuje odwołującego?"}).json()
+    assert answer["answer"].startswith("Kancelaria") and answer["sources"][0]["filename"].endswith(".pdf")

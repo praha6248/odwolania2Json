@@ -88,7 +88,8 @@ python -m odwolania2json eval katalog_z_przykladami         # F1, gdy są pliki 
 | `label` | nazwa wyświetlana |
 | `classify` | wagi słów i wzorców; dokument dostaje typ o najwyższej sumie, jeśli przekracza próg `min_classification_score`. `require`: warunki konieczne (`any`: lista wzorców, `scope`: `head` albo `all`); niespełniony oznacza 0 pkt. `negative`: wzorce cech innych dokumentów (np. `WYROK`, `Sygn. akt`) odejmujące punkty |
 | `sections` | nazwane fragmenty dokumentu: `start`, `end` (regex lub lista), `include_start`, `max_chars` |
-| `fields` | pola: `extract` (łańcuch ekstraktorów), `normalize`, `default`, `description` (opis dla człowieka i LLM) |
+| `fields` | pola: `extract` (łańcuch ekstraktorów), `normalize`, `default`, `description` i `example` (opis i przykład struktury dla człowieka i LLM), `optional: true` (puste pole nie trafia do weryfikacji). Pola spoza `template` są pomocnicze i nie trafiają do JSON |
+| `case` | `party` i `reference`: ścieżki do pól identyfikujących sprawę (np. `odwolujacy[].nazwa`), używane do grupowania dokumentów i sprawdzania zgodności |
 | `llm.fields` | pola, które model może uzupełnić, gdy reguły zostawią je puste |
 | `template` | kształt wyniku JSON; napisy `$pole` są zastępowane wartościami |
 

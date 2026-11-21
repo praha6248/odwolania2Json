@@ -67,6 +67,7 @@ sections:
 
 fields:
   data:
+    optional: true
     description: Date from the place/date line in the document header (ISO).
     normalize: [date_iso]
     extract:
@@ -76,6 +77,7 @@ fields:
         ignore_case: false
 
   miejscowosc:
+    optional: true
     description: Place from the place/date line in the document header.
     normalize: [strip, place]
     extract:
@@ -147,18 +149,21 @@ fields:
           12: Projektowane postanowienia umowy
 
   odwolujacy:
+    example: '[{"krs": "0000123456", "nazwa": "Firma sp. z o.o.", "nip": "1234567890", "regon": "123456789", "przez-pelnomocnika": 1, "pelnomocnik": {"imie_nazwisko": "Jan Kowalski", "nazwa": "Kancelaria X", "mail": "a@b.pl"}}]'
     description: Appellant or consortium leader, with attorney.
     default: []
     extract:
       - type: appellants
 
   zamawiajacy:
+    example: '[{"krs": null, "nazwa": "Gmina X", "nip": "1234567890", "regon": "123456789", "prowadzacy_postepowanie": null}]'
     description: Contracting authorities.
     default: []
     extract:
       - type: contracting_authorities
 
   numer_bzp:
+    optional: true
     description: BZP notice number, format YYYY/BZP######## (no TED numbers).
     normalize: [bzp]
     extract:
@@ -167,6 +172,7 @@ fields:
         pattern: '(\d{4}\s*/\s*BZP\s*[\d ]{6,12}\d(?:\s*/\s*\d{1,2})?)'
 
   numer_ted:
+    optional: true
     description: TED notice number as NNNNNN-YYYY.
     normalize: [ted]
     extract:
@@ -204,6 +210,10 @@ fields:
       - type: regex
         pattern: 'którego\s+przedmiotem\s+jest\s+([^„"“,]{5,300}?),\s+(?:prowadzon|w\s+trybie)'
         dotall: true
+
+case:
+  party: odwolujacy[].nazwa
+  reference: numer_postepowania
 
 template:
   OdwolanieKIO:

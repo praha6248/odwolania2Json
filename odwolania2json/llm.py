@@ -10,10 +10,9 @@ from typing import Any
 
 from . import normalizers
 from .config import DocumentType
-from .engine import Context, Evidence, FieldResult, render, run_field
+from .engine import Context, Evidence, FieldResult, is_derived, render, run_field
 
 log = logging.getLogger("odwolania2json.llm")
-DERIVED = {"map", "ref", "present", "const"}
 
 
 class LLMClient:
@@ -61,12 +60,12 @@ class LLMClient:
         )
         return {"model": self.model, "seconds": round(time.perf_counter() - started, 2), "answer": json.loads(_strip_fences(answer))}
 
-    def refine(self, doc_type: DocumentType, text: str, data: dict[str, Any], ctx: Context) -> dict[str, Any]:
-        """Ask the model to fill only fields left empty by the rules for those listed in the type's llm.fields."""
-        targets = [f for f in doc_type.llm.get("fields", []) if ctx.value(f) in (None, "", [])]
-        if not targets:
-            return data
-        hints = {f: doc_type.fields.get(f, {}).get("description", "") for f in targets}
+    def ask_fields(self, doc_type: DocumentType, text: str, targets: list[str]) -> dict[str, Any]:
+        """Ask the model for the listed fields and return their normalized values (missing keys are None)."""
+        hints = {}
+        for name in targets:
+            spec = doc_type.fields.get(name, {})
+            hints[name] = spec.get("description", "") + (f" Przykład wartości: {spec['example']}" if spec.get("example") else "")
         system = doc_type.llm.get(
             "system",
             "Jesteś precyzyjnym systemem ekstrakcji danych z polskich dokumentów prawnych. "
@@ -78,19 +77,56 @@ class LLMClient:
             + "\n\nTekst dokumentu:\n"
             + text[: self.max_chars]
         )
+        answer = json.loads(_strip_fences(self.chat(system, user)))
+        return {name: normalizers.apply(doc_type.fields.get(name, {}).get("normalize"), answer.get(name)) for name in targets}
+
+    def verify(self, doc_type: DocumentType, text: str, data: dict[str, Any], ctx: Context) -> dict[str, Any]:
+        """Accurate mode: extract every LLM field independently, keep rule values, mark agreement and fill gaps."""
+        from .evaluate import same
+
+        targets = list(doc_type.llm.get("fields", []))
+        if not targets:
+            return data
         try:
-            answer = json.loads(_strip_fences(self.chat(system, user)))
+            answers = self.ask_fields(doc_type, text, targets)
+        except Exception as exc:
+            log.warning("LLM verification failed: %s", exc)
+            return data
+        for name in targets:
+            llm_value = answers.get(name)
+            result = ctx.results.get(name)
+            if result is None:
+                continue
+            result.llm_value = llm_value
+            if result.value in (None, "", []):
+                if llm_value not in (None, "", []):
+                    ctx.results[name] = FieldResult(name, llm_value, Evidence("llm"), source="llm", review_context=result.review_context, llm_value=llm_value, llm_check="uzupełnione")
+                continue
+            agree = json.dumps(result.value, ensure_ascii=False, sort_keys=True) == json.dumps(llm_value, ensure_ascii=False, sort_keys=True) or (
+                not isinstance(result.value, (list, dict)) and same(result.value, llm_value)
+            )
+            result.llm_check = "zgodne" if agree else "rozbieżne"
+        for name, spec in doc_type.fields.items():
+            if is_derived(spec):
+                ctx.results[name] = run_field(ctx, name, spec)
+        return render(doc_type.template, {name: result.value for name, result in ctx.results.items()})
+
+    def refine(self, doc_type: DocumentType, text: str, data: dict[str, Any], ctx: Context) -> dict[str, Any]:
+        """Fast mode with LLM: ask the model only for fields left empty by the rules (listed in llm.fields)."""
+        targets = [f for f in doc_type.llm.get("fields", []) if ctx.value(f) in (None, "", [])]
+        if not targets:
+            return data
+        try:
+            answers = self.ask_fields(doc_type, text, targets)
         except Exception as exc:
             log.warning("LLM refinement failed: %s", exc)
             return data
         for name in targets:
-            value = normalizers.apply(doc_type.fields.get(name, {}).get("normalize"), answer.get(name))
+            value = answers.get(name)
             if value not in (None, "", []):
-                ctx.results[name] = FieldResult(name, value, Evidence("llm"), source="llm")
+                ctx.results[name] = FieldResult(name, value, Evidence("llm"), source="llm", llm_value=value, llm_check="uzupełnione")
         for name, spec in doc_type.fields.items():
-            chain = spec.get("extract") or []
-            derived = all(step.get("type") in DERIVED for step in (chain if isinstance(chain, list) else [chain]))
-            if chain and derived and ctx.value(name) in (None, "", []):
+            if is_derived(spec) and ctx.value(name) in (None, "", []):
                 ctx.results[name] = run_field(ctx, name, spec)
         return render(doc_type.template, {name: result.value for name, result in ctx.results.items()})
 
