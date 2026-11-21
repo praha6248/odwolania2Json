@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import re
 import shutil
 import subprocess
@@ -41,25 +40,9 @@ def platform_name() -> str:
 
 
 def pyinstaller() -> Path:
-    """Run PyInstaller in one-folder mode and return the built folder."""
-    sep = os.pathsep
+    """Run PyInstaller with packaging/odwolania2json.spec (window and console executables in one folder) and return the built folder."""
     subprocess.run(
-        [
-            sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", NAME,
-            "--icon", str(ROOT / "packaging" / ("icon.ico" if platform_name() == "windows" else "icon.png")),
-            "--add-data", f"{ROOT / 'odwolania2json' / 'web' / 'static'}{sep}odwolania2json/web/static",
-            "--add-data", f"{ROOT / 'config'}{sep}config",
-            "--collect-all", "rapidocr",
-            "--collect-all", "onnxruntime",
-            "--collect-submodules", "uvicorn",
-            "--collect-all", "pypdfium2",
-            "--collect-all", "pypdfium2_raw",
-            "--collect-data", "wordfreq",
-            "--collect-all", "morfeusz2",
-            "--hidden-import", "odwolania2json.extractors",
-            "--distpath", str(DIST), "--workpath", str(ROOT / "build"), "--specpath", str(ROOT / "build"),
-            str(ROOT / "packaging" / "launcher.py"),
-        ],
+        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--distpath", str(DIST), "--workpath", str(ROOT / "build"), str(ROOT / "packaging" / "odwolania2json.spec")],
         check=True,
         cwd=ROOT,
     )
