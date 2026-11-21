@@ -92,7 +92,7 @@ def pack(app: Path) -> Path:
     RELEASE.mkdir(parents=True, exist_ok=True)
     base = RELEASE / f"{NAME}-{version()}-{platform_name()}"
     if platform_name() == "windows":
-        target = base.with_suffix(".zip")
+        target = Path(f"{base}.zip")
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
             for file in app.rglob("*"):
                 archive.write(file, Path(NAME) / file.relative_to(app))

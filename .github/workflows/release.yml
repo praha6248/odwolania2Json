@@ -67,6 +67,7 @@ jobs:
   docker:
     needs: build
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -78,14 +79,17 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           version=$(python3 -c 'import re;print(re.search(r"__version__ = \"(.+?)\"", open("odwolania2json/__init__.py").read()).group(1))')
-          docker build -t "$image:$version" -t "$image:latest" .
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" -t "$image:$version" -t "$image:latest" .
           docker push "$image:$version"
           docker push "$image:latest"
 
   pages:
     needs: publish
+    runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
+      actions: write
+    steps:
+      - name: Refresh the download page from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
