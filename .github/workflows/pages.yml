@@ -24,6 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Write the latest release data next to the page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/site_release.py "$GITHUB_REPOSITORY" site/release.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
