@@ -456,6 +456,7 @@ function bind() {
   $("#file").addEventListener("change", (e) => upload(e.target.files));
   $("#btn-export").addEventListener("click", exportAll);
   $("#btn-clear").addEventListener("click", async () => {
+    if (!state.docs.length || !window.confirm("Usunąć wszystkie dokumenty z listy, także te poza bieżącym filtrem?")) return;
     await Promise.all(state.docs.map((d) => api(`/api/documents/${d.id}`, { method: "DELETE" })));
     state.docs = [];
     state.current = null;

@@ -6,11 +6,11 @@
   --line-strong: #d9dce2;
   --text: #15171c;
   --text-2: #4a4f5c;
-  --muted: #8a8f9c;
-  --accent: #f04e23;
-  --accent-hover: #dc431a;
-  --accent-soft: #fff3ee;
-  --accent-line: #ffd6c7;
+  --muted: #626a78;
+  --accent: #234d50;
+  --accent-hover: #163b3e;
+  --accent-soft: #e9f4f1;
+  --accent-line: #a2c7bd;
   --ink: #1b1c21;
   --ink-2: #2a2c33;
   --green: #12924f;
@@ -258,8 +258,6 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
 }
 @media (max-width: 720px) {
   .topbar { padding: 0 16px; gap: 12px; grid-template-columns: 1fr auto; }
-  .search, .profile-text { display: none; }
-  .rail { display: none; }
   .content { padding: 16px; }
   .kpis { gap: 12px; }
   .kpi { padding: 14px 16px; }
@@ -271,4 +269,32 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
   .facts { grid-template-columns: 1fr 1fr; }
   .detail-grid > .card { height: auto; min-height: 0; }
   .pdf { height: 480px; flex: none; }
+}
+
+.rail { width: 192px; }
+.rail-inner { width: 100%; padding: 8px; align-items: stretch; background: var(--surface); border: 1px solid var(--line); }
+.rail-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 0 10px; color: var(--text-2); text-align: left; }
+.rail-btn.active { background: var(--accent); }
+.kpi:nth-child(1) { background: #edf2fa; }
+.kpi:nth-child(2) { background: #e6f3eb; }
+.kpi:nth-child(3) { background: #f1edfa; }
+.kpi:nth-child(4) { background: #faf0e2; }
+.kpi-row, .actions, .segmented, .card-head { flex-wrap: wrap; }
+.kpi-label { color: var(--text-2); }
+#btn-clear { color: #992d26; }
+.search:focus-within, .field-search:focus-within { outline: 2px solid var(--accent); }
+@media (max-width: 900px) {
+  .layout { flex-direction: column; }
+  .rail { width: auto; padding: 12px 16px 0; }
+  .rail-inner { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .rail-btn { width: auto; flex: 1 1 auto; justify-content: center; }
+}
+@media (max-width: 720px) {
+  .topbar { position: static; height: auto; padding-block: 10px; }
+  .search { grid-column: 1 / -1; grid-row: 2; }
+  .profile .avatar { display: none; }
+  .type-grid { grid-template-columns: minmax(0, 1fr); }
+  .class-row { grid-template-columns: minmax(0, 1fr) 1fr auto; }
+  .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .kpi-row { gap: 6px; }
 }
