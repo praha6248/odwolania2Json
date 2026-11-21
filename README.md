@@ -116,6 +116,17 @@ python -m odwolania2json serve        # http://127.0.0.1:8000
 
 **Dokumenty spoza puli** dostają pusty JSON `{}` i komunikat „nie udało się dopasować typu dokumentu” (`unmatched_output` w `settings.yaml`).
 
+### Serwer oceny UZP (Azure, Ubuntu 24.04)
+
+```bash
+cd /opt/solution
+git clone https://github.com/praha6248/odwolania2Json.git repo
+bash repo/deploy/azure/setup.sh      # Python 3.13 (uv), zależności, modele OCR, test na przykładach
+sudo bash run.sh                     # komenda z /opt/solution/RUN.md: input/ -> output/
+```
+
+`setup.sh` kopiuje do `/opt/solution` pliki `RUN.md` i `run.sh`. Ocena nie potrzebuje sieci, Dockera, GPU ani kluczy API; każdy PDF dostaje plik JSON (dokument spoza puli lub nieczytelny: `{}`), a błąd jednego pliku nie zatrzymuje reszty.
+
 ### Docker Compose
 
 ```bash
