@@ -225,4 +225,19 @@ Workflowy GitHub Actions:
 
 ## Licencja
 
-Apache License 2.0, pełny tekst w pliku [LICENSE](LICENSE). Wszystkie zależności są open source.
+Apache License 2.0, pełny tekst w pliku [LICENSE](LICENSE).
+
+Wykorzystane komponenty zewnętrzne (wszystkie open source):
+
+| Komponent | Zastosowanie | Licencja |
+|---|---|---|
+| pypdf, pypdfium2 (PDFium) | tekst i renderowanie stron PDF, położenie wartości na stronie | BSD-3-Clause, Apache-2.0 |
+| RapidOCR z modelami PP-OCRv5 i PP-OCRv6 (PaddleOCR) | OCR skanów na CPU | Apache-2.0 |
+| ONNX Runtime | uruchamianie modeli OCR | MIT |
+| wordfreq, Morfeusz 2 | słownik i odmiana polskich słów | Apache-2.0 (dane CC BY-SA 4.0), BSD-2-Clause |
+| FastAPI, Uvicorn, python-multipart | interfejs webowy | MIT, BSD-3-Clause, Apache-2.0 |
+| PyYAML, NumPy, Pillow, openpyxl | konfiguracja, obrazy, eksport do Excela | MIT, BSD-3-Clause, MIT-CMU, MIT |
+| Tesseract (zapasowy OCR, jeśli jest zainstalowany) | OCR | Apache-2.0 |
+| Bielik-4.5B-v3.0-Instruct, Ollama (opcjonalnie) | tryb dokładny z LLM | Apache-2.0, MIT |
+| PyInstaller, Inno Setup | budowanie paczek i instalatora | GPL-2.0 z wyjątkiem dla budowanych programów, licencja Inno Setup |
+
