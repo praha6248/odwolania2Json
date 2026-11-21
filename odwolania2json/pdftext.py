@@ -26,9 +26,27 @@ class DocumentText:
         return "\n".join(self.pages)
 
 
+SPACING_ACCENTS = {
+    "´": "\u0301",
+    "˙": "\u0307",
+    "˛": "\u0328",
+    "¸": "\u0327",
+    "ˇ": "\u030c",
+}
+
+
+def join_spacing_accents(text: str) -> str:
+    """Merge spacing accents emitted by some PDF generators (e.g. LaTeX: '´s', '˙z', '˛a') with their letters."""
+    for accent, combining in SPACING_ACCENTS.items():
+        text = re.sub(rf"{accent}\s?([A-Za-z])", lambda m: m.group(1) + combining, text)
+    return text
+
+
 def clean_text(text: str) -> str:
     """Normalize unicode, whitespace and typographic artefacts in extracted text."""
+    text = join_spacing_accents(text)
     text = unicodedata.normalize("NFC", text)
+    text = text.replace("\u00ad", "").replace("\ufb01", "fi").replace("\ufb02", "fl")
     text = text.replace(" ", " ").replace(" ", " ").replace(" ", " ")
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
