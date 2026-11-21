@@ -169,6 +169,13 @@ function renderKpis() {
   $("#k-ocr").textContent = `skany (OCR): ${docs.filter((d) => d.ocr).length}`;
 }
 
+/** One-line status under the file name: ready, fields to review, or outside the pool. */
+function fileStatus(doc, review) {
+  if (!doc.doc_type) return '<div class="file-sub">pusty JSON <code>{}</code></div>';
+  if (review) return `<div class="file-sub warn">${review} ${plural(review, "pole", "pola", "pól")} do weryfikacji</div>`;
+  return '<div class="file-sub ok">Gotowe</div>';
+}
+
 /** Render the overview table. */
 function renderTable() {
   const query = ($("#table-search").value || $("#search").value).trim().toLowerCase();
@@ -180,7 +187,7 @@ function renderTable() {
     const review = reviewItems(d).length;
     return `<tr data-id="${d.id}" tabindex="0">
       <td class="cell-file"><div class="file-cell"><span class="file-icon ${d.doc_type || ""}">${ICON_DOC}</span>
-        <div><div class="file-name">${esc(d.filename)}</div><div class="file-sub">${d.ocr ? "skan · OCR" : "PDF z tekstem"}${review ? ` · <span class="warn">${review} do weryfikacji</span>` : ""}</div></div></div></td>
+        <div><div class="file-name"><span class="fname-text">${esc(d.filename)}</span>${d.ocr ? '<span class="tag-ocr" title="Skan odczytany przez OCR">OCR</span>' : ""}</div>${fileStatus(d, review)}</div></div></td>
       <td data-label="Typ"><span class="chip ${d.doc_type || "none"}">${esc(d.doc_label)}</span></td>
       <td data-label="Podmiot"><div class="cell-main" title="${esc(subject(d))}">${esc(subject(d))}</div></td>
       <td data-label="Postępowanie"><span class="mono">${esc(procedure(d))}</span></td>
