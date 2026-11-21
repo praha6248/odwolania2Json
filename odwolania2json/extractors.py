@@ -25,8 +25,8 @@ ID_PATTERNS = {
     "regon": r"REGON\s*[:]?\s*(\d{9}(?:\d{5})?)",
 }
 ADDRESS_STOP = (
-    r"(?:\s*\((?:KRS|NIP|REGON|dalej)|\s+(?:ul|al|pl|os)\.\s|\s+(?:udziela|ustanawia|upoważnia)|,\s*(?:ul\.|al\.|pl\.|os\.|ulica|aleja|z siedzibą|wpisan|KRS|NIP|REGON|adres)|\s*\(dalej|\s+z siedzibą|\s*\n\s*(?:ul\.|al\.|pl\.|os\.|KRS|NIP|REGON)"
-    r"|,\s*\d{2}-\d{3}|\s+reprezentowan|\s*;)"
+    r"(?:\s*\((?:KRS|NIP|REGON|dalej)|\s+(?:ul|al|pl|os)\s?\.\s|\s+(?:udziela|ustanawia|upoważnia)|,\s*(?:ul\.|al\.|pl\.|os\.|ulica|aleja|z siedzibą|wpisan|KRS|NIP|REGON|adres)|\s*\(dalej|\s+z siedzibą|\s*\n\s*(?:ul\.|al\.|pl\.|os\.|KRS|NIP|REGON)"
+    r"|,\s*\d{2}-\d{3}|\s*\n\s*\d{2}-\d{3}\b|\s+reprezentowan|\s*;)"
 )
 ORG_WORDS = {"kancelaria", "prawna", "prawny", "radca", "adwokacka", "spółka", "partnerzy", "legal", "biuro"}
 NOT_PERSON_WORDS = {
@@ -253,22 +253,42 @@ def party_block(text: str, label: str, stop: str) -> tuple[str, int] | None:
     return text[match.end():end], match.end()
 
 
+EMPLOYEE = r"(?:pracownik\w*|osob\w+\s+upoważnion\w*)\s*(?:[–—-]\s*)?"
+
+
+def governed_nominative(name: str) -> str:
+    """Return the nominative of a name governed by 'przez' (accusative), when the inflection is unambiguous.
+
+    'Roberta Kubiaka' and 'Annę Szymańską' are converted; 'Kamila Nowak' (a nominative female name that is also
+    the genitive of 'Kamil') is kept, because the surname does not change.
+    """
+    converted = nominative(name)
+    if not converted or converted == name:
+        return name
+    if converted.split()[-1] != name.split()[-1] or re.search(r"[ęą]\b", name):
+        return converted
+    return name
+
+
 def parse_entity(block: str) -> dict[str, Any]:
     """Parse name, identifiers, representative, law firm and e-mail from a party block."""
     body = re.sub(r"^\s*(?:\([^)]*\)\s*)?:?", "", block, count=1)
     first = body.lstrip()
     if fx.match(r"(?:Konsorcjum|wykonawcy\s+wspólnie)", first, re.I):
         first = first.split("\n", 1)[1] if "\n" in first else ""
-    first = re.sub(r"^\s*\d\)\s*[^\n]*:\s*\n", "", first)
+    first = re.sub(r"^\s*\d[.)]\s*[^\n]*:\s*\n", "", first)
+    first = re.sub(r"^\s*\d{1,2}[.)]\s+(?=\S)", "", first)
     name = cut_name(first)
     represented = fx.search(r"reprezentowan\w*\s+przez|pełnomocnik\w*\s*:", body, re.I)
-    rep = fx.search(rf"reprezentowan\w*\s+przez\s*:?\s*((?:{TITLES}\s*)?)({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
-    rep_name = person_name(re.sub(r"\s+", " ", rep.group(2))) if rep else None
-    if rep_name and OBLIQUE_TITLE.search(rep.group(1)):
+    rep = fx.search(rf"reprezentowan\w*\s+przez\s*:?\s*({EMPLOYEE})?((?:{TITLES}\s*)?)({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
+    rep_name = person_name(re.sub(r"\s+", " ", rep.group(3))) if rep else None
+    if rep_name and OBLIQUE_TITLE.search(rep.group(2)):
         rep_name = nominative(rep_name)
+    elif rep_name and not rep.group(1):
+        rep_name = governed_nominative(rep_name)
     if rep_name and any(w in NOT_PERSON_WORDS or w.lower() in ORG_WORDS for w in rep_name.split()):
         rep_name = None
-    firm = fx.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*tel)", body, re.I | re.S)
+    firm = fx.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*(?:tel|ul\.|al\.|pl\.|os\.|\d{2}-\d{3}))", body, re.I | re.S)
     firm_name = entity_name(re.sub(r"\s*\n\s*", " ", firm.group(1))) if firm else None
     if not firm_name and represented:
         after = body[represented.end():]
@@ -346,6 +366,33 @@ def extract_contracting_authorities(ctx: Context, spec: dict[str, Any]) -> tuple
             leading = 1 if fx.search(r"prowadząc|lider|pełnomocnik\s+zamawiaj", header, re.I) else 0
             out.append({"krs": entity["krs"], "nazwa": entity["name"], "nip": entity["nip"], "regon": entity["regon"], "prowadzacy_postepowanie": leading})
     else:
-        entity = parse_entity(block)
-        out.append({"krs": entity["krs"], "nazwa": entity["name"], "nip": entity["nip"], "regon": entity["regon"], "prowadzacy_postepowanie": None})
+        listed = split_listed(block)
+        for part in listed or [block]:
+            entity = parse_entity(part)
+            out.append({"krs": entity["krs"], "nazwa": entity["name"], "nip": entity["nip"], "regon": entity["regon"], "prowadzacy_postepowanie": None})
     return out, Evidence("contracting_authorities", snippet(ctx.text, start, start + len(block), 0), start, start + len(block))
+
+
+CONTACT_LINE = r"\s*(?:tel|fax|faks|e-?mail|adres|NIP|KRS|REGON|www|https?:|reprezentowan|strona|platforma|numer\s+telefonu)"
+STREET_START = r"\s*(?:ul|al|pl|os)\s?\.|\s*\d"
+
+
+def split_listed(block: str) -> list[str]:
+    """Split an unnumbered list of entities written one per address (joint procurement) into separate parts.
+
+    Each part ends with the line that holds its postal code; the list ends at the first contact line or blank line.
+    Returns [] unless at least two parts that each start with a name are found.
+    """
+    body = re.sub(r"^\s*(?:\([^)]*\)\s*)?:?", "", block, count=1).strip("\n")
+    parts: list[str] = []
+    current: list[str] = []
+    for line in body.split("\n"):
+        if not line.strip() or fx.match(CONTACT_LINE, line, re.I):
+            break
+        current.append(line)
+        if re.search(r"\b\d{2}-\d{3}\b", line):
+            parts.append("\n".join(current))
+            current = []
+    if len(parts) < 2 or any(fx.match(STREET_START, part, re.I) or not re.match(rf"\s*[{UPPER}]", part) for part in parts):
+        return []
+    return parts

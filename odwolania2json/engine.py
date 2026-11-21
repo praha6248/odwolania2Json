@@ -264,12 +264,21 @@ def run_field(ctx: Context, name: str, spec: dict[str, Any]) -> FieldResult:
         kind = step.get("type", "regex")
         if kind not in _EXTRACTORS:
             raise KeyError(f"{ctx.doc_type.name}.{name}: unknown extractor '{kind}'")
-        raw, evidence = _EXTRACTORS[kind](ctx, step)
-        value = normalizers.apply(step.get("normalize"), raw)
-        value = normalizers.apply(spec.get("normalize"), value)
-        if value not in (None, "", []):
-            return FieldResult(name, value, evidence)
+        for scoped in per_section(step):
+            raw, evidence = _EXTRACTORS[kind](ctx, scoped)
+            value = normalizers.apply(step.get("normalize"), raw)
+            value = normalizers.apply(spec.get("normalize"), value)
+            if value not in (None, "", []):
+                return FieldResult(name, value, evidence)
     return FieldResult(name, copy.deepcopy(spec.get("default")), None, review_context=review_context(ctx, chain))
+
+
+def per_section(step: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expand a step whose scope lists several sections into one step per section, tried in order."""
+    scope = step.get("scope")
+    if not isinstance(scope, list) or len(scope) < 2:
+        return [step]
+    return [{**step, "scope": section} for section in scope]
 
 
 def review_context(ctx: Context, chain: list[dict[str, Any]]) -> str | None:
