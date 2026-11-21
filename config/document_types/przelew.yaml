@@ -33,6 +33,8 @@ classify:
     '^\s*Przewodnicząc\w*\s*:': 20
     '^\s*Protokolant\w*\s*:': 20
     '^\s*(?:orzeka|postanawia)\s*:': 20
+    '^\s*ODPOWIEDŹ\s+NA\s+ODWOŁANIE': 40
+    '^\s*PRZYSTĄPIENIE\b': 40
 
 fields:
   data_operacji:
