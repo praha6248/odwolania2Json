@@ -7,3 +7,10 @@ llm:
   api_key: ""
   timeout: 120
   max_chars: 12000
+
+ocr:
+  enabled: true
+  engines: [tesseract, rapidocr]
+  min_chars_per_page: 40
+  max_pages: 4
+  scale: 2.0

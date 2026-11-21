@@ -31,6 +31,7 @@ class DocumentResult:
     text: str = ""
     seconds: float = 0.0
     error: str | None = None
+    ocr: dict[str, Any] | None = None
 
     def trace(self) -> dict[str, Any]:
         """Return a transparent, serializable account of how the output was produced."""
@@ -44,6 +45,7 @@ class DocumentResult:
             },
             "fields": self.fields,
             "seconds": round(self.seconds, 3),
+            "ocr": self.ocr,
             "error": self.error,
         }
 
@@ -75,12 +77,17 @@ class Processor:
     def process_pdf(self, path: str | Path, forced_type: str | None = None) -> DocumentResult:
         """Process a single PDF file, never raising on malformed input."""
         path = Path(path)
+        started = time.perf_counter()
         try:
-            text = extract_text(path).text
+            doc = extract_text(path, self.settings.ocr)
         except Exception as exc:
             log.exception("Cannot read %s", path)
             return DocumentResult(path, None, Classification(None, 0.0), None, error=str(exc))
-        return self.process_text(text, path, forced_type)
+        result = self.process_text(doc.text, path, forced_type)
+        result.seconds = time.perf_counter() - started
+        if doc.ocr_pages:
+            result.ocr = {"engine": doc.ocr_engine, "pages": [i + 1 for i in doc.ocr_pages]}
+        return result
 
     def process_tree(self, input_dir: str | Path, output_dir: str | Path, trace_dir: str | Path | None = None) -> list[DocumentResult]:
         """Process every PDF under input_dir, mirroring the folder tree into output_dir."""
