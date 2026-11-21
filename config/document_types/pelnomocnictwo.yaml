@@ -1,0 +1,35 @@
+name: pelnomocnictwo
+label: Pełnomocnictwo
+description: Power of attorney granted by the appellant (or consortium members) to its legal representatives.
+
+classify:
+  head_chars: 400
+  head_keywords:
+    pełnomocnictwo: 6
+  keywords:
+    mocodawca: 3
+    pełnomocnictwa: 1
+    umocowan: 1
+    pełnomocnictwo przyjmuję: 2
+  patterns:
+    '^\s*P\s*E\s*Ł\s*N\s*O\s*M\s*O\s*C\s*N\s*I\s*C\s*T\s*W\s*O\s*$': 4
+  filename_hints:
+    pelnomocnictwo: 4
+    pełnomocnictwo: 4
+
+fields:
+  mocodawca:
+    description: Principals granting the power of attorney, with signatories.
+    default: []
+    extract:
+      - type: principals
+
+  pelnomocnicy:
+    description: Attorneys receiving the power of attorney (name in nominative, PESEL if given).
+    default: []
+    extract:
+      - type: attorneys
+
+template:
+  mocodawca: $mocodawca
+  pelnomocnicy: $pelnomocnicy
