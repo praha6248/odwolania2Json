@@ -7,6 +7,8 @@ const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13
 const ICON_DL = '<svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>';
 const ICON_OK = '<svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>';
 const ICON_BAD = '<svg viewBox="0 0 24 24"><path d="M12 8v5M12 16v.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>';
+const ICON_BOLT = '<svg viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg>';
+const ICON_SEARCH = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
 const ICON_SPARK = '<svg viewBox="0 0 24 24"><path d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>';
 const TYPE_ORDER = ["odwolanie", "pelnomocnictwo", "przelew"];
 
@@ -637,6 +639,7 @@ function applyLlmState() {
   const { enabled, mode, model } = state.llm;
   const accurate = enabled && mode === "accurate";
   $("#mode-label").textContent = accurate ? "Tryb dokładny" : "Tryb szybki";
+  $("#mode-icon").innerHTML = enabled ? ICON_SPARK : ICON_BOLT;
   const status = $("#llm-status");
   status.textContent = enabled ? `LLM: ${String(model).split("/").pop().replace(/-GGUF.*$/i, "").replace(/:.*$/, "")}` : "LLM: wyłączony";
   status.title = enabled ? String(model) : "";
@@ -803,7 +806,7 @@ async function askQuestion(question) {
   if (!state.docs.length) return toast("Najpierw dodaj dokumenty");
   const box = document.createElement("div");
   box.className = "answer";
-  box.innerHTML = `<div class="answer-q">${ICON_SPARK}${esc(question)}</div><div class="answer-a"><span class="spinner" style="display:inline-block"></span></div>`;
+  box.innerHTML = `<div class="answer-q">${state.llm.enabled ? ICON_SPARK : ICON_SEARCH}${esc(question)}</div><div class="answer-a"><span class="spinner" style="display:inline-block"></span></div>`;
   $("#answers").prepend(box);
   $("#ask-input").value = "";
   if (!state.llm.enabled) return searchDocuments(question, box);

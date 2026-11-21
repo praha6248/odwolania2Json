@@ -64,7 +64,7 @@ sections:
     end: ['\.\s*\n', '\.\s+(?=(?-i:[A-ZĄĆĘŁŃÓŚŹŻ]))', ';', '\n\s*\d+[.)]\s']
     max_chars: 400
   appeal_against:
-    start: '(?:wnoszę|wnosimy|składam|składamy|wnosi)\s+(?:niniejszym\s+)?odwołanie\s+(?:na|od|wobec)'
+    start: '(?:(?:wnoszę|wnosimy|składam|składamy|wnosi)\s+(?:niniejszym\s+)?odwołanie\s+(?:na|od|wobec)|\n\s*wobec\s*:)'
     include_start: true
     end: ['\n\s*II\.', 'zarzucam', '\n\s*(?:2[).]|b\))', ';\s*\n']
     max_chars: 500
