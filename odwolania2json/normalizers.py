@@ -115,7 +115,7 @@ def date_iso(value: str) -> str | None:
     match = re.search(r"(\d{1,2})\s+([a-ząćęłńóśźż]+)\s+(\d{4})", text)
     if match:
         day, month_name, year = match.groups()
-        month = MONTHS.get(month_name) or ROMAN.get(month_name)
+        month = MONTHS.get(month_name) or ROMAN.get(month_name) or _close_month(month_name)
         if month:
             return _iso(year, month, day)
     match = re.search(r"(\d{1,2})\s+(\d{1,2})\s+(\d{4})", text)
@@ -123,6 +123,16 @@ def date_iso(value: str) -> str | None:
         day, month, year = match.groups()
         return _iso(year, month, day)
     return None
+
+
+def _close_month(word: str) -> int | None:
+    """Month number of a month name misread by OCR (e.g. 'ezerwca'), when it is close to exactly one name."""
+    import difflib
+
+    if len(word) < 4:
+        return None
+    match = difflib.get_close_matches(word, MONTHS, n=1, cutoff=0.8)
+    return MONTHS[match[0]] if match else None
 
 
 def _iso(year: Any, month: Any, day: Any) -> str | None:
