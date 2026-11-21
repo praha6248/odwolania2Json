@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { docs: [], current: null, types: [], filter: "", view: "list", llm: { enabled: false, mode: "fast" }, cases: [], reviewDone: new Set() };
+const state = { docs: [], current: null, types: [], filter: "", view: "list", llm: { enabled: false, mode: "fast" }, cases: [], casesFilter: "all", reviewDone: new Set() };
 const $ = (sel) => document.querySelector(sel);
 const ICON_DOC = '<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>';
@@ -171,13 +171,34 @@ function renderTable() {
   renderKpis();
 }
 
+/** Tell whether a case needs attention (party mismatch, missing documents or no reference). */
+function needsAttention(c) {
+  return !c.reference || !c.consistent || c.missing_types.length > 0;
+}
+
 /** Fetch case groups from the server and render them. */
 async function refreshCases() {
   state.cases = state.docs.length ? await api("/api/cases").catch(() => []) : [];
-  const card = $("#cases-card");
-  card.classList.toggle("hidden", !state.cases.length);
+  renderCases();
+}
+
+/** Render the cases view and the navigation badge. */
+function renderCases() {
+  const attention = state.cases.filter(needsAttention).length;
+  const badge = $("#cases-badge");
+  badge.textContent = attention;
+  badge.classList.toggle("hidden", !attention);
+  const shown = state.casesFilter === "attention" ? state.cases.filter(needsAttention) : state.cases;
+  $("#cases-empty").classList.toggle("hidden", shown.length > 0);
+  $("#cases-empty").querySelector("b").textContent = state.cases.length ? "Wszystkie sprawy są kompletne i zgodne" : "Brak spraw";
+  document.querySelectorAll("#cases-filter button").forEach((b) => {
+    const on = b.dataset.cases === state.casesFilter;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+    if (b.dataset.cases === "attention") b.textContent = `Wymagające uwagi (${attention})`;
+  });
   const labels = Object.fromEntries(state.types.map((t) => [t.name, t.label]));
-  $("#cases").innerHTML = state.cases.map((c) => {
+  $("#cases").innerHTML = shown.map((c) => {
     const status = !c.reference
       ? '<span class="status warn">bez numeru postępowania</span>'
       : c.consistent
@@ -634,6 +655,7 @@ function bind() {
   });
   $("#rows").addEventListener("keydown", (e) => { if (e.key === "Enter") openRow(e); });
   $("#cases").addEventListener("click", (e) => { const li = e.target.closest("[data-open]"); if (li) openDoc(li.dataset.open); });
+  $("#cases-filter").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { state.casesFilter = b.dataset.cases; renderCases(); } });
   $("#cases").addEventListener("keydown", (e) => { const li = e.target.closest("[data-open]"); if (li && e.key === "Enter") openDoc(li.dataset.open); });
   $("#type-filter").addEventListener("click", (e) => {
     const b = e.target.closest("button");
