@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import fuzzy_re as fx
 from .config import DocumentType, Settings
 from .pdftext import compact
 
@@ -21,7 +22,7 @@ class Classification:
 
 
 def score_type(doc_type: DocumentType, text: str, filename: str) -> tuple[float, list[str]]:
-    """Score how well a text matches a document type using weighted keywords."""
+    """Score a text against a type: weighted keywords and patterns, minus negative evidence; 0 when a required rule fails."""
     cfg = doc_type.classify
     head = compact(text[: int(cfg.get("head_chars", 2000))])
     whole = compact(text)
@@ -39,6 +40,17 @@ def score_type(doc_type: DocumentType, text: str, filename: str) -> tuple[float,
         if re.search(pattern, text, flags=re.I | re.M):
             score += float(weight)
             hits.append(pattern)
+    raw_head = text[: int(cfg.get("head_chars", 2000))]
+    for pattern, weight in (cfg.get("negative") or {}).items():
+        if fx.search(pattern, raw_head, re.I | re.M):
+            score -= float(weight)
+            hits.append(f"-{pattern}")
+    for rule in cfg.get("require") or []:
+        patterns = rule.get("any", [rule.get("pattern")]) if isinstance(rule, dict) else [rule]
+        scope = text if isinstance(rule, dict) and rule.get("scope") == "all" else raw_head
+        if not any(p and fx.search(p, scope, re.I | re.M) for p in patterns):
+            hits.append(f"brak wymaganego: {(rule.get('name') if isinstance(rule, dict) else None) or patterns[0]}")
+            return 0.0, hits
     name = compact(Path(filename).stem)
     for hint, weight in (cfg.get("filename_hints") or {}).items():
         if compact(hint) in name:
