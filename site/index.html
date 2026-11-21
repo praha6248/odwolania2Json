@@ -143,19 +143,29 @@ function describe(name) {
   return null;
 }
 
+/** Latest release: release.json written next to the page at deploy time, or the GitHub API as a fallback. */
+async function latestRelease() {
+  try {
+    const res = await fetch(`release.json?t=${Date.now()}`, { cache: "no-store" });
+    if (res.ok) {
+      const rel = await res.json();
+      if (rel && rel.tag_name) return rel;
+    }
+  } catch (e) { }
+  const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
 /** Load the latest release and render download cards. */
 async function load() {
   document.getElementById("repo-link").href = `https://github.com/${REPO}`;
   document.getElementById("all-releases").href = `https://github.com/${REPO}/releases`;
   const grid = document.getElementById("downloads-grid");
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
-    if (!res.ok) throw new Error(res.status);
-    const rel = await res.json();
-    const sums = {};
-    await Promise.all(rel.assets.filter((a) => a.name.endsWith(".sha256")).map(async (a) => {
-      try { sums[a.name.replace(/\.sha256$/, "")] = (await (await fetch(a.browser_download_url)).text()).split(/\s/)[0]; } catch (e) { }
-    }));
+    const rel = await latestRelease();
+    if (!rel || !rel.tag_name) throw new Error("no release");
+    const sums = Object.fromEntries(rel.assets.filter((a) => a.sha256).map((a) => [a.name, a.sha256]));
     const items = rel.assets.map((a) => ({ a, d: describe(a.name) })).filter((x) => x.d).sort((x, y) => x.d.order - y.d.order);
     const date = new Date(rel.published_at).toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" });
     document.getElementById("release-meta").innerHTML = `Wersja <b>${esc(rel.tag_name)}</b> · ${esc(date)}`;

@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 GITHUB_REPO = os.environ.get("O2J_UPDATE_REPO", "praha6248/odwolania2Json")
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 DOWNLOAD_PAGE_URL = f"https://{GITHUB_REPO.split('/')[0].lower()}.github.io/{GITHUB_REPO.split('/')[1]}/"
+MIRROR_URL = DOWNLOAD_PAGE_URL + "release.json"
 TIMEOUT_S = 6
 _VERSION_RE = re.compile(r"^\s*v?(\d+(?:\.\d+){0,3})")
 
@@ -38,16 +39,26 @@ def is_newer(candidate: str | None, current: str) -> bool:
     return new + (0,) * (width - len(new)) > old + (0,) * (width - len(old))
 
 
+def latest_release() -> dict[str, Any] | None:
+    """Latest release from the release.json mirror on GitHub Pages, or from the GitHub API when the mirror fails."""
+    for url in (MIRROR_URL, API_URL):
+        try:
+            request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "odwolania2json-update-check"})
+            with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+                release = json.loads(response.read().decode())
+            if release.get("tag_name"):
+                return release
+        except Exception as exc:
+            log.debug("Update check via %s failed: %s", url, exc)
+    return None
+
+
 def check_for_update(current: str = __version__) -> dict[str, Any]:
-    """Ask the GitHub API for the latest release and report whether it is newer than the running version."""
+    """Find the latest release and report whether it is newer than the running version."""
     if os.environ.get("O2J_NO_UPDATE_CHECK"):
         return {"available": False, "current": current}
-    try:
-        request = urllib.request.Request(API_URL, headers={"Accept": "application/vnd.github+json", "User-Agent": "odwolania2json-update-check"})
-        with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
-            release = json.loads(response.read().decode())
-    except Exception as exc:
-        log.debug("Update check failed: %s", exc)
+    release = latest_release()
+    if release is None:
         return {"available": False, "current": current}
     tag = release.get("tag_name")
     return {
