@@ -300,6 +300,45 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         item = store.get(doc_id)
         return FileResponse(item["path"], media_type="application/pdf", headers={"Content-Disposition": "inline"})
 
+    @app.get("/api/documents/{doc_id}/pages")
+    def page_count(doc_id: str) -> dict[str, int]:
+        """Number of pages of the stored PDF."""
+        import pypdfium2 as pdfium
+
+        from ..ocr import PDFIUM_LOCK
+
+        item = store.get(doc_id)
+        if "pages" not in item:
+            with PDFIUM_LOCK:
+                pdf = pdfium.PdfDocument(str(item["path"]))
+                item["pages"] = len(pdf)
+                pdf.close()
+        return {"pages": item["pages"]}
+
+    @app.get("/api/documents/{doc_id}/pages/{number}.png")
+    def page_image(doc_id: str, number: int) -> Response:
+        """Render one PDF page as PNG so the preview works in every browser and the desktop window."""
+        import io
+
+        import pypdfium2 as pdfium
+
+        from ..ocr import PDFIUM_LOCK
+
+        item = store.get(doc_id)
+        cache = item.setdefault("page_png", {})
+        if number not in cache:
+            with PDFIUM_LOCK:
+                pdf = pdfium.PdfDocument(str(item["path"]))
+                count = len(pdf)
+                image = pdf[number - 1].render(scale=1.6).to_pil() if 1 <= number <= count else None
+                pdf.close()
+            if image is None:
+                raise HTTPException(status_code=404, detail="Brak strony")
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG", optimize=True)
+            cache[number] = buffer.getvalue()
+        return Response(cache[number], media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+
     @app.get("/api/documents/{doc_id}/json")
     def download(doc_id: str) -> Response:
         """Download the output JSON named after the source PDF."""

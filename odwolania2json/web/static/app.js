@@ -103,6 +103,28 @@ function highlight(data) {
   });
 }
 
+const ROUTES = { list: "dokumenty", cases: "sprawy", detail: "dokument", assistant: "asystent", types: "typy", settings: "ustawienia", help: "pomoc" };
+const TABS = { json: "json", review: "weryfikacja", fields: "zrodla", text: "tekst", class: "klasyfikacja" };
+
+/** Write the current view (and document tab) into the URL hash without adding history noise. */
+function setHash(view, tab) {
+  const hash = view === "detail" && state.current ? `#/dokument/${state.current.id}/${TABS[tab || state.tab || "json"]}` : `#/${ROUTES[view] || "dokumenty"}`;
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+}
+
+/** Open the view described by the URL hash (deep links survive reloads). */
+async function applyRoute() {
+  const [, name, id, tab] = (location.hash || "").split("/");
+  const view = Object.keys(ROUTES).find((k) => ROUTES[k] === name);
+  if (view === "detail" && id && state.docs.some((d) => d.id === id)) {
+    await openDoc(id);
+    const tabKey = Object.keys(TABS).find((k) => TABS[k] === tab);
+    if (tabKey) showTab(tabKey);
+  } else if (view && view !== "detail") {
+    go(view);
+  }
+}
+
 /** Switch between views. */
 function go(view) {
   if (view === "detail" && !state.current) {
@@ -121,6 +143,7 @@ function go(view) {
     else b.removeAttribute("aria-current");
   });
   if (view === "assistant") $("#ask-input").focus();
+  setHash(view);
   window.scrollTo({ top: 0 });
 }
 
@@ -240,7 +263,9 @@ async function openDoc(id) {
   updateDoc(doc);
   $("#summary-card").classList.add("hidden");
   renderDetail(doc);
+  state.tab = "json";
   go("detail");
+  showTab("json");
 }
 
 /** Render every part of the detail view for the current document. */
@@ -260,9 +285,9 @@ function renderDetail(doc) {
     ["Weryfikacja LLM", llmFields ? `${llmFields} ${plural(llmFields, "pole", "pola", "pól")}` : "Nie"],
     ["Klasyfikacja", `${doc.classification.score} pkt`],
   ].map(([l, v]) => `<div><div class="fact-label">${l}</div><div class="fact-value">${v}</div></div>`).join("");
-  if (!$("#d-pdf iframe") || $("#d-pdf").dataset.id !== doc.id) {
+  if ($("#d-pdf").dataset.id !== doc.id) {
     $("#d-pdf").dataset.id = doc.id;
-    $("#d-pdf").innerHTML = `<iframe src="/api/documents/${doc.id}/pdf#view=FitH&navpanes=0&pagemode=none" title="Podgląd PDF ${esc(doc.filename)}"></iframe>`;
+    renderPages(doc);
   }
   $("#d-json").innerHTML = doc.data && Object.keys(doc.data).length ? highlight(doc.data)
     : `<div class="empty-state"><b>Nie udało się dopasować typu dokumentu</b><span>${esc(doc.message || "")}</span><span>Wynikiem jest pusty JSON <code>{}</code>. Jeśli to pomyłka, wybierz typ z listy w nagłówku.</span></div>`;
@@ -277,6 +302,35 @@ function renderDetail(doc) {
   renderSources(doc);
   renderText(doc);
   renderClassification(doc);
+}
+
+/** Render the PDF preview as server-rendered page images (works without a browser PDF plugin). */
+async function renderPages(doc) {
+  const box = $("#d-pdf");
+  box.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+  try {
+    const { pages } = await api(`/api/documents/${doc.id}/pages`);
+    box.innerHTML = `<div class="pages">${Array.from({ length: pages }, (_, i) => `
+      <figure class="page"><img loading="${i < 2 ? "eager" : "lazy"}" src="/api/documents/${doc.id}/pages/${i + 1}.png" alt="Strona ${i + 1} z ${pages}: ${esc(doc.filename)}"><figcaption>Strona ${i + 1} z ${pages}</figcaption></figure>`).join("")}</div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="empty-state"><b>Nie udało się wyświetlić podglądu</b><a class="btn" href="/api/documents/${doc.id}/pdf" target="_blank">Otwórz PDF</a></div>`;
+  }
+}
+
+/** Flatten nested values into path → leaf pairs for a readable comparison. */
+function flatten(value, prefix = "", out = {}) {
+  if (Array.isArray(value)) value.forEach((v, i) => flatten(v, `${prefix}[${i}]`, out));
+  else if (value && typeof value === "object") Object.entries(value).forEach(([k, v]) => flatten(v, prefix ? `${prefix}.${k}` : k, out));
+  else out[prefix] = value;
+  return out;
+}
+
+/** Only the sub-fields where the rules and the LLM disagree. */
+function differences(rules, llm) {
+  const a = flatten(rules ?? null);
+  const b = flatten(llm ?? null);
+  const norm = (v) => (v === null || v === undefined ? "" : String(v).trim().toLowerCase().replace(/\s+/g, " "));
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => norm(a[k]) !== norm(b[k])).map((k) => ({ path: k, rules: a[k], llm: b[k] }));
 }
 
 /** Short reason why a field is in the review queue. */
@@ -303,7 +357,7 @@ function renderReview(doc, items) {
       : `<input data-edit="${esc(f.field)}" value="${esc(shown)}" placeholder="brak wartości" aria-label="Wartość pola ${esc(f.field)}">`;
     return `<div class="review-item ${done ? "done" : ""}">
       <div class="review-top"><span class="review-name">${esc(f.field)}</span><span class="status ${f.llm_check === "rozbieżne" ? "bad" : "warn"}">${esc(reviewReason(f))}</span></div>
-      ${llm !== null ? `<div class="review-compare"><div><small>Reguły</small>${esc(shown || "brak")}</div><div><small>LLM</small>${esc(llm)}</div></div>` : ""}
+      ${llm !== null ? renderDiff(f) : ""}
       ${f.review_context || f.snippet ? `<div class="review-context">${esc(f.review_context || f.snippet)}</div>` : ""}
       <div class="review-edit">${input}
         <button class="btn primary" data-save="${esc(f.field)}">Zapisz</button>
@@ -311,6 +365,16 @@ function renderReview(doc, items) {
         <button class="btn" data-accept="${esc(f.field)}">${shown ? "Zatwierdź" : "Zostaw puste"}</button>
       </div></div>`;
   }).join("")}</div>`;
+}
+
+/** Show the rules and LLM values side by side, limited to the sub-fields that differ. */
+function renderDiff(f) {
+  const show = (v) => (v === null || v === undefined || v === "" ? '<span class="muted">brak</span>' : esc(v));
+  const diffs = differences(f.value, f.llm_value);
+  if (!diffs.length) return "";
+  const rows = diffs.slice(0, 8).map((d) => `<tr><td class="mono">${esc(d.path || f.field)}</td><td>${show(d.rules)}</td><td>${show(d.llm)}</td></tr>`).join("");
+  const more = diffs.length > 8 ? `<p class="muted small">…i ${diffs.length - 8} ${plural(diffs.length - 8, "inna różnica", "inne różnice", "innych różnic")}</p>` : "";
+  return `<table class="diff"><thead><tr><th>Pole</th><th>Reguły</th><th>LLM</th></tr></thead><tbody>${rows}</tbody></table>${more}`;
 }
 
 /** Save a manually corrected field value. */
@@ -381,6 +445,8 @@ function renderClassification(doc) {
 
 /** Activate a result tab. */
 function showTab(name) {
+  state.tab = name;
+  if (state.view === "detail") setHash("detail", name);
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   ["json", "review", "fields", "text", "class"].forEach((t) => $(`#tab-${t}`).classList.toggle("hidden", t !== name));
 }
@@ -432,7 +498,8 @@ function applyLlmState() {
   const accurate = enabled && mode === "accurate";
   $("#mode-label").textContent = accurate ? "Tryb dokładny" : "Tryb szybki";
   const status = $("#llm-status");
-  status.textContent = enabled ? `LLM: ${String(model).split("/").pop()}` : "LLM: wyłączony";
+  status.textContent = enabled ? `LLM: ${String(model).split("/").pop().replace(/-GGUF.*$/i, "").replace(/:.*$/, "")}` : "LLM: wyłączony";
+  status.title = enabled ? String(model) : "";
   status.className = enabled ? (accurate ? "accurate" : "on") : "";
   document.querySelectorAll(".llm-only").forEach((b) => {
     b.disabled = !enabled;
@@ -758,4 +825,5 @@ function bind() {
 }
 
 bind();
-loadInfo().then(loadLlm).then(() => api("/api/documents")).then(async (docs) => { state.docs = docs || []; renderTable(); await refreshCases(); });
+window.addEventListener("hashchange", applyRoute);
+loadInfo().then(loadLlm).then(() => api("/api/documents")).then(async (docs) => { state.docs = docs || []; renderTable(); await refreshCases(); await applyRoute(); document.body.dataset.ready = "1"; });
