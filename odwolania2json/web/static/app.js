@@ -248,6 +248,138 @@ async function copyJson() {
   toast("Skopiowano JSON");
 }
 
+/** Fill the LLM settings form from the server. */
+async function loadLlm() {
+  const llm = await api("/api/llm");
+  $("#llm-enabled").checked = llm.enabled;
+  $("#llm-enabled-label").textContent = llm.enabled ? "Włączony" : "Wyłączony";
+  $("#llm-url").value = llm.base_url;
+  $("#llm-model").value = llm.model;
+  $("#llm-key").value = "";
+  $("#llm-key-hint").textContent = llm.has_key ? "Klucz jest ustawiony." : "Brak klucza (niepotrzebny dla lokalnej Ollamy).";
+  const status = $("#llm-status");
+  status.textContent = llm.enabled ? `LLM: ${llm.model}` : "LLM: wyłączony";
+  status.classList.toggle("on", llm.enabled);
+}
+
+/** Save LLM settings. */
+async function saveLlm() {
+  await api("/api/llm", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      enabled: $("#llm-enabled").checked,
+      base_url: $("#llm-url").value,
+      model: $("#llm-model").value,
+      api_key: $("#llm-key").value,
+      persist: $("#llm-persist").checked,
+    }),
+  });
+  await loadLlm();
+  toast("Zapisano ustawienia LLM");
+}
+
+/** Test the LLM endpoint with the values currently in the form. */
+async function testLlm() {
+  const out = $("#llm-check-out");
+  out.className = "muted";
+  out.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle"></span> Testuję…';
+  const enabled = $("#llm-enabled").checked;
+  await api("/api/llm", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled, base_url: $("#llm-url").value, model: $("#llm-model").value, api_key: $("#llm-key").value }) });
+  const r = await api("/api/llm/check", { method: "POST" });
+  out.className = r.ok ? "ok" : "err";
+  out.textContent = r.ok ? `Działa: ${r.model}, odpowiedź w ${r.seconds} s.` : `Błąd: ${r.error}`;
+  await loadLlm();
+}
+
+/** Re-run extraction of the current document with the LLM filling empty fields. */
+async function refineWithLlm() {
+  if (!state.current) return;
+  const button = $("#btn-llm");
+  button.disabled = true;
+  $("#overlay-text").textContent = "Model uzupełnia puste pola…";
+  $("#overlay").classList.remove("hidden");
+  try {
+    await api(`/api/documents/${state.current.id}/reprocess?llm=true`, { method: "POST" });
+    await openDoc(state.current.id);
+    renderTable();
+    const filled = state.current.fields.filter((f) => f.source === "llm").length;
+    toast(filled ? `LLM uzupełnił pola: ${filled}` : "LLM nie znalazł brakujących wartości");
+  } catch (e) {
+    toast(`Błąd LLM: ${e.message}`);
+  } finally {
+    button.disabled = false;
+    $("#overlay").classList.add("hidden");
+  }
+}
+
+/** Format a byte count. */
+function bytes(n) {
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} kB`;
+}
+
+/** Open the update dialog with what a patch update would download. */
+function openUpdate() {
+  const u = state.update || {};
+  const modal = $("#update-modal");
+  const action = $("#update-action");
+  $("#update-progress").classList.add("hidden");
+  $("#update-progress-text").textContent = "";
+  $("#update-notes").href = u.url || "#";
+  $("#update-notes").classList.toggle("hidden", !u.url);
+  if (!u.available) {
+    $("#update-sub").textContent = `Wersja ${u.current || ""}`;
+    $("#update-text").textContent = u.latest
+      ? "Masz najnowszą wersję."
+      : "Nie udało się sprawdzić aktualizacji (brak połączenia z GitHubem lub repozytorium nie jest publiczne).";
+    action.classList.add("hidden");
+  } else if (u.delta) {
+    $("#update-sub").textContent = `${u.current} → ${u.latest}`;
+    $("#update-text").textContent = u.delta.files
+      ? `Zmieniło się ${u.delta.files} z ${u.delta.total_files} plików. Pobierzemy tylko je: ${bytes(u.delta.bytes)}. Twoja konfiguracja i foldery input/output zostaną bez zmian.`
+      : "Pliki są już aktualne. Wystarczy ponowne uruchomienie.";
+    action.textContent = "Aktualizuj";
+    action.classList.remove("hidden");
+    action.onclick = startUpdate;
+  } else {
+    $("#update-sub").textContent = `${u.current} → ${u.latest}`;
+    $("#update-text").textContent = "Ta instancja działa ze źródeł lub w Dockerze. Pobierz nową wersję ze strony wydań albo zaktualizuj repozytorium (git pull).";
+    action.textContent = "Otwórz stronę wydania";
+    action.classList.remove("hidden");
+    action.onclick = () => window.open(u.url, "_blank");
+  }
+  modal.querySelector(".form-foot").classList.toggle("hidden", action.classList.contains("hidden") && !u.url);
+  modal.classList.remove("hidden");
+}
+
+/** Download the patch and follow its progress. */
+async function startUpdate() {
+  const action = $("#update-action");
+  action.disabled = true;
+  $("#update-progress").classList.remove("hidden");
+  let s = await api("/api/update/start", { method: "POST" });
+  while (s.stage === "downloading") {
+    const pct = s.total ? Math.round((s.done / s.total) * 100) : 100;
+    $("#update-bar").style.width = `${pct}%`;
+    $("#update-progress-text").textContent = `${bytes(s.done || 0)} z ${bytes(s.total || 0)}`;
+    await new Promise((r) => setTimeout(r, 500));
+    s = await api("/api/update/status");
+  }
+  action.disabled = false;
+  if (s.stage === "ready") {
+    $("#update-bar").style.width = "100%";
+    $("#update-progress-text").textContent = "Pobrano i zweryfikowano (SHA-256).";
+    action.textContent = "Uruchom ponownie";
+    action.onclick = async () => {
+      await api("/api/update/restart", { method: "POST" });
+      $("#update-text").textContent = "Aplikacja uruchamia się ponownie z nową wersją…";
+      action.classList.add("hidden");
+    };
+  } else {
+    $("#update-progress-text").textContent = `Błąd: ${s.error || "nieznany"}`;
+  }
+}
+
 /** Load app info, document types and update status. */
 async function loadInfo() {
   const info = await api("/api/info");
@@ -262,10 +394,10 @@ async function loadInfo() {
       <div class="type-fields">${t.fields.map((f) => `<span class="chip neutral">${esc(f)}</span>`).join("")}</div></div>`).join("");
   renderFilter();
   api("/api/update").then((u) => {
+    state.update = u;
     if (!u.available) return;
     $("#update-dot").classList.remove("hidden");
     $("#update-btn").title = `Dostępna wersja ${u.latest}`;
-    $("#update-btn").onclick = () => window.open(u.url, "_blank");
   }).catch(() => {});
 }
 
@@ -310,6 +442,14 @@ function bind() {
     renderTable();
   });
   $("#btn-copy").addEventListener("click", copyJson);
+  $("#btn-llm").addEventListener("click", refineWithLlm);
+  $("#update-btn").addEventListener("click", openUpdate);
+  $("#update-close").addEventListener("click", () => $("#update-modal").classList.add("hidden"));
+  $("#update-modal").addEventListener("click", (e) => { if (e.target.id === "update-modal") $("#update-modal").classList.add("hidden"); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#update-modal").classList.add("hidden"); });
+  $("#llm-save").addEventListener("click", saveLlm);
+  $("#llm-test").addEventListener("click", testLlm);
+  $("#llm-enabled").addEventListener("change", (e) => { $("#llm-enabled-label").textContent = e.target.checked ? "Włączony" : "Wyłączony"; });
   $("#d-copy").addEventListener("click", copyJson);
   $("#btn-upload").addEventListener("click", () => $("#file").click());
   $("#dropzone").addEventListener("click", (e) => { e.preventDefault(); $("#file").click(); });
@@ -341,4 +481,4 @@ function bind() {
 }
 
 bind();
-loadInfo().then(() => api("/api/documents")).then((docs) => { state.docs = docs || []; renderTable(); });
+loadInfo().then(loadLlm).then(() => api("/api/documents")).then((docs) => { state.docs = docs || []; renderTable(); });

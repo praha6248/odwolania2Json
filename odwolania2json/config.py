@@ -73,6 +73,25 @@ def load_dotenv(*paths: Path) -> None:
             os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+ENV_FILE = DEFAULT_CONFIG_DIR.parent / ".env"
+
+
+def save_env(updates: dict[str, str], path: Path = ENV_FILE) -> None:
+    """Write or replace KEY=VALUE lines in the .env file and the current environment."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    remaining = dict(updates)
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip()
+        if key in remaining:
+            out.append(f"{key}={remaining.pop(key)}")
+        else:
+            out.append(line)
+    out.extend(f"{key}={value}" for key, value in remaining.items())
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.environ.update(updates)
+
+
 def load_settings(config_dir: str | Path | None = None) -> Settings:
     """Load settings.yaml, import extractor plugin modules and read every document type from the configuration directory."""
     load_dotenv(Path.cwd() / ".env", DEFAULT_CONFIG_DIR.parent / ".env")
