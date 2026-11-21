@@ -99,6 +99,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             ],
         }
 
+    @app.get("/api/update")
+    def update() -> dict[str, Any]:
+        """Report whether a newer release is available on GitHub."""
+        from ..update_check import check_for_update
+
+        return check_for_update()
+
     @app.post("/api/reload")
     def reload() -> dict[str, Any]:
         """Reload YAML configuration without restarting the server."""

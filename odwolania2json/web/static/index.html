@@ -8,122 +8,164 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<div class="shell">
-  <aside class="rail" aria-label="Nawigacja">
-    <a class="rail-btn active" data-view="workspace" title="Analiza dokumentów">
-      <svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
-    </a>
-    <a class="rail-btn" data-view="types" title="Typy dokumentów">
-      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-    </a>
-    <a class="rail-btn" data-view="help" title="Jak to działa">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg>
-    </a>
-  </aside>
+<header class="topbar">
+  <a class="brand" href="#" data-go="list"><img src="/static/logo.svg" alt=""><span>Odwołania2JSON</span></a>
+  <label class="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="search" placeholder="Szybkie wyszukiwanie…" autocomplete="off">
+    <kbd>/</kbd>
+  </label>
+  <div class="top-right">
+    <button class="round-btn" id="update-btn" title="Aktualizacje"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></svg><span class="dot hidden" id="update-dot"></span></button>
+    <div class="profile">
+      <span class="avatar"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 12h6M12 9v6"/></svg></span>
+      <span class="profile-text"><b>Tryb lokalny</b><small id="llm-status">LLM: wyłączony</small></span>
+    </div>
+  </div>
+</header>
 
-  <div class="main">
-    <header class="topbar">
-      <div class="brand"><img src="/static/logo.svg" alt=""><span>Odwołania2JSON</span></div>
-      <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="search" placeholder="Szukaj dokumentu…"><kbd>/</kbd></label>
-      <div class="top-right">
-        <span class="pill" id="llm-pill" title="Status modelu językowego">LLM: wyłączony</span>
-        <span class="muted" id="version"></span>
-      </div>
-    </header>
+<div class="layout">
+  <nav class="rail" aria-label="Nawigacja">
+    <div class="rail-inner">
+      <button class="rail-btn active" data-go="list" title="Dokumenty"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
+      <button class="rail-btn" data-go="detail" title="Analiza dokumentu"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></button>
+      <button class="rail-btn" data-go="types" title="Typy dokumentów"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+      <button class="rail-btn" data-go="help" title="Jak to działa"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg></button>
+    </div>
+  </nav>
 
-    <section class="view" id="view-workspace">
+  <main class="content">
+    <section class="view" id="view-list">
       <div class="page-head">
         <div>
-          <h1>Analiza dokumentów</h1>
-          <p class="muted">Wgraj PDF-y sprawy odwoławczej. Aplikacja rozpozna rodzaj dokumentu i wyodrębni dane do JSON.</p>
-        </div>
-        <div class="actions">
-          <button class="btn" id="btn-clear">Wyczyść</button>
-          <button class="btn" id="btn-add">Dodaj PDF</button>
-          <button class="btn primary" id="btn-export">Pobierz wszystkie JSON</button>
+          <div class="crumbs">Sprawy KIO <span>/</span> Dokumenty</div>
+          <h1>Dokumenty</h1>
         </div>
       </div>
 
-      <div class="banner">
-        <svg viewBox="0 0 24 24"><path d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
-        <span><b>Przejrzysta ekstrakcja.</b> Kliknij pole w zakładce „Pola”, aby zobaczyć fragment dokumentu, z którego pochodzi wartość.</span>
+      <div class="kpis">
+        <div class="kpi">
+          <div class="kpi-label">Dokumenty</div>
+          <div class="kpi-row"><span class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg></span><span class="kpi-value" id="k-total">0</span><span class="chip neutral" id="k-cases">0 spraw</span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Rozpoznane</div>
+          <div class="kpi-row"><span class="kpi-icon"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg></span><span class="kpi-value" id="k-known">0</span><span class="chip ok" id="k-known-pct">–</span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Kompletność pól</div>
+          <div class="kpi-row"><span class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg></span><span class="kpi-value" id="k-fill">–</span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Śr. czas analizy</div>
+          <div class="kpi-row"><span class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg></span><span class="kpi-value" id="k-time">–</span><span class="chip neutral" id="k-ocr">0 OCR</span></div>
+        </div>
       </div>
 
-      <div class="stats">
-        <div class="stat"><span class="stat-label">Dokumenty</span><span class="stat-value" id="st-total">0</span></div>
-        <div class="stat"><span class="stat-label">Odwołania</span><span class="stat-value" id="st-odwolanie">0</span></div>
-        <div class="stat"><span class="stat-label">Pełnomocnictwa</span><span class="stat-value" id="st-pelnomocnictwo">0</span></div>
-        <div class="stat"><span class="stat-label">Przelewy</span><span class="stat-value" id="st-przelew">0</span></div>
-        <div class="stat"><span class="stat-label">Śr. czas</span><span class="stat-value" id="st-time">–</span></div>
-      </div>
-
-      <div class="workspace">
-        <div class="card docs">
-          <div class="card-head"><h2>Dokumenty</h2><span class="badge" id="doc-count">0</span></div>
-          <ul class="doc-list" id="doc-list"></ul>
-          <label class="drop" id="drop">
-            <input type="file" id="file" accept="application/pdf" multiple hidden>
-            <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-            <span><b>Wgraj PDF</b> albo upuść pliki tutaj</span>
+      <div class="card table-card">
+        <div class="toolbar">
+          <label class="field-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="table-search" placeholder="Szukaj"></label>
+          <div class="segmented" id="type-filter">
+            <button class="active" data-type="">Wszystkie</button>
+          </div>
+          <div class="toolbar-right">
+            <button class="btn" id="btn-clear">Wyczyść</button>
+            <button class="btn" id="btn-export">Eksportuj JSON</button>
+            <button class="btn dark" id="btn-upload"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Wgraj PDF</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Plik</th><th>Typ</th><th>Podmiot</th><th>Postępowanie</th><th>Kompletność</th><th>Czas</th><th></th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <label class="dropzone" id="dropzone">
+            <span class="drop-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></span>
+            <span class="drop-title">Upuść tutaj PDF-y sprawy</span>
+            <span class="drop-sub">odwołanie, pełnomocnictwo, potwierdzenie przelewu — typ zostanie rozpoznany automatycznie</span>
+            <span class="btn primary">Wybierz pliki</span>
           </label>
         </div>
+        <div class="table-foot muted" id="table-foot"></div>
+      </div>
+    </section>
 
-        <div class="card preview">
+    <section class="view hidden" id="view-detail">
+      <div class="detail-head">
+        <button class="back" data-go="list"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Wszystkie dokumenty</button>
+        <div class="actions">
+          <button class="btn" id="btn-copy">Kopiuj JSON</button>
+          <a class="btn primary" id="btn-download">Pobierz JSON</a>
+        </div>
+      </div>
+
+      <button class="banner" data-go="help">
+        <svg viewBox="0 0 24 24"><path d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+        <span>Skąd pochodzi wartość? Otwórz zakładkę <b>Źródła</b> i kliknij pole.</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+
+      <div class="detail-grid">
+        <div class="card">
           <div class="card-head">
-            <h2 id="preview-title">Podgląd pliku PDF</h2>
-            <div class="icons">
-              <a class="icon-btn" id="open-pdf" target="_blank" title="Otwórz w nowej karcie"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
-            </div>
+            <div><h2 id="d-title">Dokument</h2><p class="muted" id="d-sub">Podgląd pliku źródłowego</p></div>
+            <a class="icon-btn" id="d-open" target="_blank" title="Otwórz PDF w nowej karcie"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
           </div>
-          <div class="pdf-frame" id="pdf-frame"><div class="empty">Wybierz dokument z listy</div></div>
+          <div class="section">
+            <div class="section-head">Szczegóły dokumentu</div>
+            <div class="facts" id="d-facts"></div>
+          </div>
+          <div class="pdf" id="d-pdf"></div>
         </div>
 
-        <div class="card result">
+        <div class="card">
           <div class="card-head">
-            <h2>Wynik</h2>
-            <div class="icons">
-              <select id="type-select" title="Wymuś typ dokumentu"></select>
-              <button class="icon-btn" id="copy-json" title="Kopiuj JSON"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
-              <a class="icon-btn" id="dl-json" title="Pobierz JSON"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg></a>
+            <div><h2>Podgląd wyniku</h2><p class="muted">JSON zgodny ze schematem UZP</p></div>
+            <div class="icon-row">
+              <select id="d-type" title="Wymuś typ dokumentu"></select>
+              <button class="icon-btn" id="d-copy" title="Kopiuj"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
+              <a class="icon-btn" id="d-dl" title="Pobierz"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg></a>
             </div>
           </div>
-          <div class="meta" id="meta"></div>
-          <nav class="tabs" id="tabs">
+          <div class="tabs" role="tablist">
             <button class="tab active" data-tab="json">JSON</button>
-            <button class="tab" data-tab="fields">Pola</button>
+            <button class="tab" data-tab="fields">Źródła</button>
             <button class="tab" data-tab="text">Tekst</button>
             <button class="tab" data-tab="class">Klasyfikacja</button>
-          </nav>
-          <div class="tab-body" id="tab-json"><pre class="json" id="json-out"><span class="muted">{ }</span></pre></div>
-          <div class="tab-body hidden" id="tab-fields"><table class="fields" id="fields-out"></table></div>
-          <div class="tab-body hidden" id="tab-text"><pre class="text" id="text-out"></pre></div>
-          <div class="tab-body hidden" id="tab-class"><div id="class-out"></div></div>
+          </div>
+          <div class="tab-body" id="tab-json"><pre class="code" id="d-json"></pre></div>
+          <div class="tab-body hidden" id="tab-fields"><div id="d-fields"></div></div>
+          <div class="tab-body hidden" id="tab-text"><pre class="code text" id="d-text"></pre></div>
+          <div class="tab-body hidden" id="tab-class"><div id="d-class"></div></div>
         </div>
       </div>
     </section>
 
     <section class="view hidden" id="view-types">
-      <div class="page-head"><div><h1>Typy dokumentów</h1><p class="muted">Każdy typ to plik YAML w <code>config/document_types/</code>. Nowy typ dodasz bez zmian w kodzie.</p></div>
-        <div class="actions"><button class="btn primary" id="btn-reload">Przeładuj konfigurację</button></div></div>
-      <div class="types" id="types-out"></div>
+      <div class="page-head">
+        <div><div class="crumbs">Konfiguracja <span>/</span> Typy dokumentów</div><h1>Typy dokumentów</h1>
+          <p class="muted lead">Każdy typ to plik YAML w <code>config/document_types/</code>. Nowy typ lub pole dodasz bez zmian w kodzie.</p></div>
+        <button class="btn primary" id="btn-reload">Przeładuj konfigurację</button>
+      </div>
+      <div class="type-grid" id="types"></div>
     </section>
 
     <section class="view hidden" id="view-help">
-      <div class="page-head"><div><h1>Jak to działa</h1><p class="muted">PDF → tekst (OCR dla skanów) → klasyfikacja → reguły z YAML (+ opcjonalnie LLM) → JSON.</p></div></div>
-      <div class="card help">
-        <ol>
-          <li><b>Tekst.</b> Warstwa tekstowa PDF; strony bez tekstu trafiają do OCR (Tesseract lub RapidOCR, CPU).</li>
-          <li><b>Klasyfikacja.</b> Punktacja słów kluczowych z sekcji <code>classify</code> każdego typu. Wynik i dopasowania widać w zakładce „Klasyfikacja”.</li>
-          <li><b>Ekstrakcja.</b> Łańcuchy ekstraktorów (<code>regex</code>, <code>label</code>, <code>keyword_map</code>, …) z normalizatorami. Każda wartość ma zapisane źródło.</li>
-          <li><b>LLM (opcjonalnie).</b> Otwarty model przez API zgodne z OpenAI uzupełnia pola, których nie znalazły reguły.</li>
-          <li><b>Wynik.</b> JSON zgodny ze schematem UZP, nazwany jak plik źródłowy.</li>
-        </ol>
-        <p>Tryb wsadowy: <code>python -m odwolania2json run</code> przetwarza <code>./input</code> do <code>./output</code>.</p>
+      <div class="page-head"><div><div class="crumbs">Pomoc <span>/</span> Jak to działa</div><h1>Jak to działa</h1></div></div>
+      <div class="steps">
+        <div class="card step"><span class="step-no">1</span><h3>Tekst</h3><p>Warstwa tekstowa PDF. Strony bez tekstu (skany) przechodzą przez OCR działający na CPU.</p></div>
+        <div class="card step"><span class="step-no">2</span><h3>Klasyfikacja</h3><p>Punktacja słów kluczowych z sekcji <code>classify</code> każdego typu. Wynik widać w zakładce „Klasyfikacja”.</p></div>
+        <div class="card step"><span class="step-no">3</span><h3>Ekstrakcja</h3><p>Łańcuchy ekstraktorów z YAML z normalizacją wartości. Każde pole zapisuje swoje źródło w dokumencie.</p></div>
+        <div class="card step"><span class="step-no">4</span><h3>LLM (opcjonalnie)</h3><p>Otwarty model przez API zgodne z OpenAI uzupełnia pola pominięte przez reguły.</p></div>
+        <div class="card step"><span class="step-no">5</span><h3>JSON</h3><p>Wynik nazwany jak plik źródłowy. Tryb wsadowy: <code>start.bat</code> / <code>./start.sh</code> przetwarza <code>input/</code> do <code>output/</code>.</p></div>
       </div>
     </section>
-  </div>
+  </main>
 </div>
-<div class="toast hidden" id="toast"></div>
+
+<input type="file" id="file" accept="application/pdf" multiple hidden>
+<div class="toast hidden" id="toast" role="status"></div>
+<div class="overlay hidden" id="overlay"><div class="overlay-box"><span class="spinner"></span><span id="overlay-text">Analizuję dokumenty…</span></div></div>
 <script src="/static/app.js"></script>
 </body>
 </html>
