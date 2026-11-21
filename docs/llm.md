@@ -86,3 +86,18 @@ O2J_LLM_API_KEY=<klucz>
 Kandydaci (sprawdź aktualną ofertę modeli i lokalizację serwerów): OVHcloud AI Endpoints (FR), Scaleway Generative APIs (FR), a także własna instancja Ollamy lub vLLM u dostawcy chmury w UE. Wybierz najmniejszy model, który na `eval` daje zysk względem samych reguł.
 
 Klucza nie commituj do publicznego repozytorium. Do zgłoszenia dołącz go jako plik `.env` przekazany organizatorom albo jako klucz z limitem i krótkim terminem ważności, wygenerowany specjalnie na czas testów.
+
+## 4. Wyniki pomiaru (tryb „tylko LLM”)
+
+`tools/eval_llm.py`: reguły tylko klasyfikują dokument, a wszystkie pola z `llm.fields` wypełnia model. 16 spraw (8 treningowych UZP + 8 syntetycznych), 48 dokumentów, RTX 5060 Ti przez Ollamę, kwantyzacja Q8_0 (Qwen2.5 Q4_K_M).
+
+| Model | Licencja | F1 | Precyzja | Czułość | s / dokument |
+|---|---|---|---|---|---|
+| **Reguły z YAML (bez LLM)** | – | **1.000** | 1.000 | 1.000 | ok. 0,1 |
+| Bielik-4.5B-v3.0-Instruct | Apache 2.0 | 0.781 | 0.729 | 0.842 | 5,0 |
+| Qwen3-1.7B | Apache 2.0 | 0.642 | 0.595 | 0.696 | 14,3 |
+| Qwen3-0.6B | Apache 2.0 | 0.529 | 0.452 | 0.638 | 8,6 |
+| Bielik-1.5B-v3.0-Instruct | Apache 2.0 | 0.465 | 0.435 | 0.498 | 1,7 |
+| Qwen2.5-1.5B-Instruct | Apache 2.0 | 0.374 | 0.466 | 0.312 | 1,2 |
+
+**Wniosek:** wynik JSON pochodzi z reguł, a LLM jest domyślnie wyłączony. Zgodnie z kryteriami UZP rozwiązanie bez LLM dostaje maksimum punktów za „moc modelu”. W trybie dokładnym LLM jest tylko niezależnym weryfikatorem (rozbieżności trafiają do ręcznej weryfikacji, nie do wyniku), autorem streszczeń i asystentem z cytatami. Do tych zastosowań zalecamy Bielik-4.5B: najlepszy wynik i dobra znajomość polszczyzny przy 4,5 mld parametrów.

@@ -41,7 +41,7 @@ class DocumentResult:
             scores = self.classification.scores
             best = max(scores, key=lambda k: scores[k]) if scores else None
             detail = f" (najbliższy: {best}, {scores[best]:g} pkt)" if best else ""
-            return f"Nie udało się dopasować typu dokumentu{detail}. JSON nie został wygenerowany."
+            return f"Nie udało się dopasować typu dokumentu{detail}."
         return None
 
     def trace(self) -> dict[str, Any]:
