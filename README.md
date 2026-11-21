@@ -12,6 +12,33 @@ Aplikacja przyjmuje PDF, **rozpoznaje rodzaj dokumentu** (odwołanie, pełnomocn
 | LLM | opcjonalny, otwarty model przez API zgodne z OpenAI |
 | Wynik na zbiorze treningowym | **F1 = 1.000** (180 dokumentów, 2032 pola) |
 
+## Jak to działa
+
+1. **Wgrywasz PDF-y sprawy:** przeciągasz je na stronę albo wrzucasz do folderu `input/`. Nazwy plików nie mają znaczenia.
+2. **Tekst:** aplikacja czyta warstwę tekstową PDF. Strony bez tekstu (skany) przechodzą przez OCR na CPU z prostowaniem strony i słownikową korektą polskich słów.
+3. **Rozpoznanie typu:** punktacja słów kluczowych, warunki konieczne i kary za cechy innych pism (np. „WYROK”, „Sygn. akt”), wszystko w YAML. Dokument spoza puli dostaje pusty JSON `{}`.
+4. **Ekstrakcja:** dla rozpoznanego typu działają reguły z `config/document_types/<typ>.yaml` (sekcje dokumentu, etykiety, wzorce, słowniki, normalizacja dat, kwot, rachunków, numerów BZP i TED). Każde pole zapamiętuje, z którego fragmentu pochodzi.
+5. **Wynik:** JSON zgodny ze schematem UZP, nazwany jak plik źródłowy, w tej samej strukturze folderów co wejście.
+6. **Tryb dokładny (opcjonalny):** otwarty LLM niezależnie sprawdza pola. Rozbieżności trafiają do weryfikacji, a nie do wyniku. Do tego streszczenia i asystent z cytatami.
+
+### Zrzuty ekranu
+
+| | |
+|---|---|
+| ![Lista dokumentów](docs/screenshots/01-dokumenty.png) **Dokumenty:** strefa przeciągania, liczniki spraw i dokumentów, tabela z typem, stroną, numerem postępowania i kompletnością pól. | ![Dokument i JSON](docs/screenshots/02-dokument-json.png) **Analiza dokumentu:** strony PDF obok wyniku JSON. |
+| ![Źródło wartości](docs/screenshots/03-zrodla-tekst.png) **Przejrzystość:** kliknięcie pola w zakładce *Źródła* podświetla fragment dokumentu, z którego pochodzi wartość. | ![Weryfikacja](docs/screenshots/04-weryfikacja.png) **Weryfikacja:** pola puste, niejednoznaczne lub rozbieżne z LLM, z różnicami, fragmentem i edycją. |
+| ![Sprawy](docs/screenshots/05-sprawy.png) **Sprawy:** dokumenty pogrupowane po numerze postępowania, zgodność stron i brakujące dokumenty. | ![Streszczenie](docs/screenshots/06-streszczenie.png) **Streszczenie (tryb dokładny):** zarzuty, żądania, terminy i kwoty. |
+| ![Asystent](docs/screenshots/07-asystent.png) **Asystent (RAG):** pytania o wszystkie wgrane dokumenty, odpowiedź z klikalnymi źródłami. | ![Ustawienia](docs/screenshots/08-ustawienia.png) **Ustawienia:** tryb szybki lub dokładny, model, klucz, test połączenia. |
+
+Na telefonie nawigacja jest na dole ekranu, a tabela zamienia się w listę kart:
+
+<p>
+<img src="docs/screenshots/09-telefon-dokumenty.png" alt="Dokumenty na telefonie" width="260">
+<img src="docs/screenshots/10-telefon-sprawy.png" alt="Sprawy na telefonie" width="260">
+</p>
+
+Widoki mają własne adresy (np. `#/sprawy`, `#/dokument/<id>/weryfikacja`), więc przetrwają odświeżenie strony.
+
 ## Szybki start
 
 ```bash
