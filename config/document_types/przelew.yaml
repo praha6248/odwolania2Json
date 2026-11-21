@@ -1,0 +1,97 @@
+name: przelew
+label: Potwierdzenie przelewu
+description: Bank transfer confirmation for the KIO entry fee or the stamp duty on a power of attorney.
+
+classify:
+  head_chars: 600
+  head_keywords:
+    potwierdzenie wykonania przelewu: 6
+    potwierdzenie realizacji: 5
+    polecenie przelewu: 5
+    potwierdzenie przelewu: 5
+    potwierdzenie transakcji: 4
+    przelew: 2
+    bank: 2
+  keywords:
+    rachunek odbiorcy: 2
+    rachunek zleceniodawcy: 2
+    kwota operacji: 2
+    tytuł przelewu: 2
+    numer referencyjny: 1
+    zrealizowano: 1
+  filename_hints:
+    przelew: 4
+    potwierdzenie: 2
+
+fields:
+  data_operacji:
+    normalize: [date_iso]
+    extract:
+      - type: label
+        labels: ["Data operacji", "Data transakcji", "Data wykonania", "Data realizacji", "Data księgowania", "Data zlecenia"]
+        value: '\d[\d./\-]+\d|\d{1,2} \w+ \d{4}'
+      - type: regex
+        pattern: 'w dniu\s+(\d[\d./\-]+\d|\d{1,2} \w+ \d{4})'
+      - type: regex
+        pattern: '(?:zrealizowan\w+|wykonan\w+)\s+(\d[\d./\-]+\d|\d{1,2} \w+ \d{4})'
+
+  kwota:
+    normalize: [amount]
+    extract:
+      - type: label
+        labels: ["Kwota operacji", "Kwota przelewu", "Kwota transakcji", "Kwota", "Wartość"]
+        value: '(?:PLN|EUR)?[ \t]?\d[\d \u00a0.,]*\d(?=[ \t]*(?:PLN|zł|EUR)?[ \t]*(?:\n|$))|\d+'
+      - type: regex
+        pattern: 'w kwocie\s+([\d][\d \.,]*\d)'
+
+  z_rachunku:
+    normalize: [account]
+    extract:
+      - type: label
+        labels: ["Rachunek zleceniodawcy", "Rachunek obciążany", "Rachunek nadawcy", "Rachunek płatnika", "Z rachunku", "Numer rachunku nadawcy", "Rachunek obciążony"]
+        value: '(?:PL)?\s?\d{2}(?:\s?\d{4}){6}'
+      - type: regex
+        pattern: 'z rachunku(?: nr)?\s*((?:PL)?\s?\d{2}(?:\s?\d{4}){6})'
+      - type: regex
+        pattern: '(?<!\d)((?:PL)?\d{2}(?: ?\d{4}){6})(?!\d)'
+        occurrence: 0
+
+  na_rachunek:
+    normalize: [account]
+    extract:
+      - type: label
+        labels: ["Rachunek odbiorcy", "Rachunek uznawany", "Rachunek beneficjenta", "Na rachunek", "Rachunek uznany", "Numer rachunku odbiorcy"]
+        value: '(?:PL)?\s?\d{2}(?:\s?\d{4}){6}'
+      - type: regex
+        pattern: 'na rachunek(?: nr)?\s*((?:PL)?\s?\d{2}(?:\s?\d{4}){6})'
+      - type: regex
+        pattern: '(?<!\d)((?:PL)?\d{2}(?: ?\d{4}){6})(?!\d)'
+        occurrence: 1
+
+  numer_transakcji:
+    normalize: [strip]
+    extract:
+      - type: label
+        labels: ["Numer referencyjny operacji", "Numer referencyjny", "Nr ref\\.", "Identyfikator operacji", "Identyfikator transakcji", "Numer transakcji", "Nr transakcji", "ID transakcji", "Referencje"]
+        value: '[A-Z]{2,}[A-Z0-9/\-]*\d[A-Z0-9/\-]*'
+        ignore_case: false
+      - type: regex
+        pattern: '\b(CEN\d{10,})\b'
+        ignore_case: false
+
+  tytul:
+    normalize: [strip_quotes, strip]
+    extract:
+      - type: label
+        labels: ["Tytuł przelewu", "Tytułem", "Tytuł", "Opis"]
+        until: '\n(?:Numer|Nr |Status|Identyfikator|Typ |Kanał|Opłata|Data|Kwota|Rachunek|Waluta|Tryb|ZREALIZOWANO|Potwierdzenie|Z poważaniem|Dokument|Bank |W razie|Referencje|Wartość|NR REF|STATUS|TRYB|WALUTA|GODZ)|”\.?|"\.'
+        max_chars: 300
+
+template:
+  przelew_bankowy:
+    data_operacji: $data_operacji
+    kwota: $kwota
+    na_rachunek: $na_rachunek
+    numer_transakcji: $numer_transakcji
+    tytul: $tytul
+    z_rachunku: $z_rachunku
