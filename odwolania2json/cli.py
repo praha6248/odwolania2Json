@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     ev = sub.add_parser("eval", help="measure F1 on a labelled dataset")
     ev.add_argument("data", type=Path)
     ev.add_argument("--errors", type=int, default=0, help="show this many mismatches")
+    ev.add_argument("--strict", action="store_true", help="require exact matches for long strings")
     ev.add_argument("--llm", action=argparse.BooleanOptionalAction, default=None)
 
     serve = sub.add_parser("serve", help="start the web interface")
@@ -94,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "eval":
         from .evaluate import evaluate_dataset, format_report
 
-        print(format_report(evaluate_dataset(processor, args.data), args.errors))
+        print(format_report(evaluate_dataset(processor, args.data, fuzzy=not args.strict), args.errors))
         return 0
 
     parser.print_help()

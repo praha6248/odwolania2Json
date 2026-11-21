@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from difflib import SequenceMatcher
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,18 +59,31 @@ def flatten(data: Any, prefix: str = "") -> dict[str, Any]:
     return out
 
 
-def same(a: Any, b: Any) -> bool:
-    """Compare two leaf values leniently on whitespace, case and numeric type."""
+FUZZY_MIN_LENGTH = 12
+FUZZY_THRESHOLD = 0.8
+
+
+def _norm(value: Any) -> str:
+    """Normalize a value for string comparison."""
+    return re.sub(r"\s+", " ", str(value)).strip().lower()
+
+
+def same(a: Any, b: Any, fuzzy: bool = True) -> bool:
+    """Compare leaf values; long strings match at >=80% similarity as in the official scoring."""
     if a is None or b is None:
         return a is b
     if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool):
         return abs(float(a) - float(b)) < 0.005
-    norm = lambda v: re.sub(r"\s+", " ", str(v)).strip().lower()
-    return norm(a) == norm(b)
+    left, right = _norm(a), _norm(b)
+    if left == right:
+        return True
+    if fuzzy and isinstance(b, str) and len(right) >= FUZZY_MIN_LENGTH:
+        return SequenceMatcher(None, left, right).ratio() >= FUZZY_THRESHOLD
+    return False
 
 
-def compare(predicted: Any, expected: Any, report: Report, label: str) -> None:
-    """Accumulate field-level confusion counts of one document into a report."""
+def compare(predicted: Any, expected: Any, report: Report, label: str, fuzzy: bool = True) -> None:
+    """Accumulate confusion counts: wrong or extra values are FP, missing values are FN."""
     pred, gold = flatten(predicted or {}), flatten(expected)
     for path in sorted(set(pred) | set(gold)):
         key = re.sub(r"\[\d+\]", "[]", path)
@@ -77,20 +91,22 @@ def compare(predicted: Any, expected: Any, report: Report, label: str) -> None:
         score = report.per_field[key]
         if p is None and g is None:
             continue
-        if same(p, g):
+        if same(p, g, fuzzy):
             score.tp += 1
             report.total.tp += 1
+            if _norm(p) != _norm(g):
+                report.errors.append((label, path, p, g))
             continue
         if p is not None:
             score.fp += 1
             report.total.fp += 1
-        if g is not None:
+        else:
             score.fn += 1
             report.total.fn += 1
         report.errors.append((label, path, p, g))
 
 
-def evaluate_dataset(processor: Any, data_dir: str | Path, pairs: dict[str, str] | None = None) -> Report:
+def evaluate_dataset(processor: Any, data_dir: str | Path, pairs: dict[str, str] | None = None, fuzzy: bool = True) -> Report:
     """Run the processor on a training set laid out as <case>/<doc>.pdf next to <case>/<ref>.json."""
     pairs = pairs or {"odwolanie.pdf": "odwolanie.json", "pelnomocnictwo.pdf": "pelnomocnictwo.json", "potwierdzenie_przelewu.pdf": "przelew.json"}
     report = Report()
@@ -100,7 +116,7 @@ def evaluate_dataset(processor: Any, data_dir: str | Path, pairs: dict[str, str]
             if not (pdf.exists() and ref.exists()):
                 continue
             result = processor.process_pdf(pdf)
-            compare(result.data, json.loads(ref.read_text(encoding="utf-8")), report, f"{case.name}/{pdf_name}")
+            compare(result.data, json.loads(ref.read_text(encoding="utf-8")), report, f"{case.name}/{pdf_name}", fuzzy)
     return report
 
 
