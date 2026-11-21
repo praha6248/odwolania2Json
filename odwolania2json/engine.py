@@ -21,6 +21,7 @@ class Evidence:
     snippet: str | None = None
     start: int | None = None
     end: int | None = None
+    ambiguous: bool = False
 
 
 @dataclass
@@ -31,6 +32,7 @@ class FieldResult:
     value: Any
     evidence: Evidence | None = None
     source: str = "rules"
+    review_context: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the result for traces and the web UI."""
@@ -39,6 +41,8 @@ class FieldResult:
             "field": self.name,
             "value": self.value,
             "source": self.source,
+            "ambiguous": bool(ev and ev.ambiguous),
+            "review_context": self.review_context,
             "method": ev.method if ev else None,
             "snippet": ev.snippet if ev else None,
             "start": ev.start if ev else None,
@@ -151,7 +155,11 @@ def extract_regex(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | N
     if value is None:
         return None, None
     start, end = match.span(group if match.re.groups else 0)
-    return value, Evidence("regex", snippet(text, start, end), offset + start, offset + end)
+    capture = group if match.re.groups else 0
+    ambiguous = "occurrence" not in spec and any(
+        other.group(capture) not in (None, value) for other in matches
+    )
+    return value, Evidence("regex", snippet(text, start, end), offset + start, offset + end, ambiguous)
 
 
 SEPARATOR = r"(?![\wąćęłńóśźż])[ \t]*[:\-–.]*[ \t.]*"
@@ -259,7 +267,21 @@ def run_field(ctx: Context, name: str, spec: dict[str, Any]) -> FieldResult:
         value = normalizers.apply(spec.get("normalize"), value)
         if value not in (None, "", []):
             return FieldResult(name, value, evidence)
-    return FieldResult(name, copy.deepcopy(spec.get("default")), None)
+    context = None
+    for step in chain:
+        if step.get("scope"):
+            region, _ = ctx.scope(step["scope"])
+            context = region.strip()[:700] or None
+        if context:
+            break
+        for label in step.get("labels", []):
+            match = fx.search(anchor(step) + "(?:" + label + ")", ctx.text, flags_of(step))
+            if match:
+                context = snippet(ctx.text, match.start(), match.end(), 100)
+                break
+        if context:
+            break
+    return FieldResult(name, copy.deepcopy(spec.get("default")), None, review_context=context)
 
 
 def render(template: Any, values: dict[str, Any]) -> Any:

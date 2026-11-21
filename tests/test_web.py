@@ -36,3 +36,15 @@ def test_llm_settings_are_optional_and_hide_the_key(monkeypatch):
     assert "secret" not in client.get("/api/llm").text
     assert client.post("/api/llm/check").json()["ok"] is False
     assert client.put("/api/llm", json={"enabled": False}).json()["enabled"] is False
+
+
+def test_case_values_match_across_documents(monkeypatch):
+    monkeypatch.setenv("O2J_NO_UPDATE_CHECK", "1")
+    client = TestClient(create_app())
+    for pdf in sorted((FIXTURES / "przyklad_07").glob("*.pdf")):
+        doc = client.post("/api/documents", files={"files": (pdf.name, pdf.read_bytes())}).json()[0]
+        assert doc["case_values"] == {"party": ["Zarendel Automatyka sp. j."], "reference": "ZP.388.2026"}
+        if doc["doc_type"] == "odwolanie":
+            field = next(f for f in doc["fields"] if f["field"] == "numer_ted")
+            assert field["value"] is None
+            assert "ZP.388.2026" in field["review_context"]

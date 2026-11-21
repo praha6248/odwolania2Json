@@ -121,6 +121,73 @@ function renderTable() {
   $("#table-foot").textContent = state.docs.length ? `${rows.length} z ${state.docs.length} dokumentów` : "";
   $("#table-foot").classList.toggle("hidden", !state.docs.length);
   renderKpis();
+  renderCase();
+}
+
+let reviewIndex = 0;
+const selectedCase = new Set();
+
+function reviewReason(field) {
+  if (field.value == null || field.value === "" || (Array.isArray(field.value) && !field.value.length)) return "Brak wartości";
+  if (leaves(field.value).some(value => value == null || value === "")) return "Brak części danych";
+  if (field.ambiguous) return "Reguła znalazła różne wartości";
+  if (field.source === "llm") return "Wartość zaproponowana przez model";
+  return "";
+}
+
+function renderReview(doc) {
+  const queue = doc.fields.filter(reviewReason);
+  const field = queue[reviewIndex];
+  $('[data-tab="review"]').textContent = `Weryfikacja (${queue.length})`;
+  $("#review-prev").disabled = reviewIndex === 0;
+  $("#review-next").disabled = reviewIndex + 1 >= queue.length;
+  if (!field) {
+    $("#review-field").textContent = doc.doc_type ? "Brak pól wymagających weryfikacji." : "Wybierz typ dokumentu, aby przeanalizować pola.";
+    return;
+  }
+  const context = field.snippet || field.review_context;
+  $("#review-field").innerHTML = `<p class="muted">Pole ${reviewIndex + 1} z ${queue.length} · ${esc(reviewReason(field))}</p>
+    <h3>${esc(field.field.replaceAll("_", " "))}</h3><pre class="src-value">${field.value == null ? "Brak wartości" : esc(JSON.stringify(field.value, null, 2))}</pre>
+    ${context ? `<h4>Fragment dokumentu</h4><blockquote>${esc(context)}</blockquote>` : "<p>Brak powiązanego fragmentu. Sprawdź dokument w podglądzie PDF.</p>"}`;
+}
+
+function caseReport(docs) {
+  return [["party", "Podmiot"], ["reference", "Numer postępowania"]].map(([key, label]) => {
+    const rows = docs.map(doc => {
+      const value = doc.case_values?.[key];
+      const values = Array.isArray(value) ? value : value ? [value] : [];
+      const normalized = values.map(v => v.toLocaleLowerCase("pl").normalize("NFC").replace(/[.,]/g, key === "party" ? "" : "$&").replace(/\s+/g, " ").trim());
+      return {file: doc.filename, values, normalized};
+    });
+    const known = rows.filter(row => row.normalized.length);
+    const conflict = known.some((row, i) => known.slice(i + 1).some(other => !other.normalized.some(v => row.normalized.includes(v))));
+    const status = conflict ? "Rozbieżność" : known.length < 2 || known.length < docs.length ? "Niepełne dane" : "Zgodne";
+    return {label, rows, status};
+  });
+}
+
+function renderCase() {
+  const docs = state.docs.filter(d => ["odwolanie", "pelnomocnictwo", "przelew"].includes(d.doc_type));
+  $("#case-panel").classList.toggle("hidden", docs.length < 2);
+  $("#case-files").innerHTML = docs.map(d => `<label><input type="checkbox" value="${esc(d.id)}" ${selectedCase.has(d.id) ? "checked" : ""}> ${esc(d.filename)}</label>`).join("");
+  const chosen = docs.filter(d => selectedCase.has(d.id));
+  $("#case-result").innerHTML = chosen.length < 2 ? "<p>Wybierz co najmniej dwa dokumenty.</p>" : caseReport(chosen).map(item =>
+    `<section><h3>${esc(item.label)} · ${item.status}</h3><ul>${item.rows.map(row => `<li>${esc(row.file)} — ${esc(row.values.join(", ") || "brak wartości")}</li>`).join("")}</ul></section>`
+  ).join("");
+}
+
+function confirmCaseExport(docs) {
+  const comparable = state.docs.filter(d => ["odwolanie", "pelnomocnictwo", "przelew"].includes(d.doc_type));
+  if (comparable.length < 2) return true;
+  const chosen = comparable.filter(d => selectedCase.has(d.id));
+  const messages = [];
+  if (chosen.length >= 2 && docs.some(d => selectedCase.has(d.id))) {
+    for (const item of caseReport(chosen).filter(item => item.status !== "Zgodne")) {
+      messages.push(item.label + " — " + item.status + "\n" + item.rows.map(row => row.file + ": " + (row.values.join(", ") || "brak wartości")).join("\n"));
+    }
+  }
+  if (chosen.length < 2 || docs.some(d => !selectedCase.has(d.id))) messages.push("Eksport obejmuje dokumenty poza porównaniem sprawy.");
+  return !messages.length || window.confirm(messages.join("\n\n") + "\n\nKontynuować eksport JSON?");
 }
 
 /** Render the type filter buttons. */
@@ -153,6 +220,8 @@ async function openDoc(id) {
   $("#d-pdf").innerHTML = `<iframe src="/api/documents/${id}/pdf#view=FitH&navpanes=0&pagemode=none" title="Podgląd PDF"></iframe>`;
   $("#d-json").innerHTML = doc.data ? highlight(doc.data)
     : `<div class="empty-state"><b>Nie udało się dopasować typu dokumentu</b><span>${esc(doc.message || "")}</span><span>Jeśli to pomyłka, wybierz typ z listy w nagłówku, aby wymusić ekstrakcję.</span></div>`;
+  reviewIndex = 0;
+  renderReview(doc);
   renderSources(doc);
   renderText(doc);
   renderClassification(doc);
@@ -201,7 +270,7 @@ function renderClassification(doc) {
 /** Activate a result tab. */
 function showTab(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-  ["json", "fields", "text", "class"].forEach((t) => $(`#tab-${t}`).classList.toggle("hidden", t !== name));
+  ["json", "review", "fields", "text", "class"].forEach((t) => $(`#tab-${t}`).classList.toggle("hidden", t !== name));
 }
 
 /** Upload and process PDFs. */
@@ -230,6 +299,7 @@ async function upload(files) {
 async function exportAll() {
   const ready = state.docs.filter((d) => d.doc_type);
   if (!ready.length) return toast("Brak wyników do pobrania");
+  if (!confirmCaseExport(ready)) return;
   for (const d of ready) {
     const a = document.createElement("a");
     a.href = `/api/documents/${d.id}/json`;
@@ -440,6 +510,20 @@ function bind() {
     await api(`/api/documents/${state.current.id}/reprocess${q}`, { method: "POST" });
     await openDoc(state.current.id);
     renderTable();
+  });
+  $("#case-files").onchange = e => {
+    if (e.target.checked) selectedCase.add(e.target.value);
+    else selectedCase.delete(e.target.value);
+    renderCase();
+    [...$("#case-files").querySelectorAll("input")].find(input => input.value === e.target.value)?.focus();
+  };
+  $("#review-prev").onclick = () => { reviewIndex--; renderReview(state.current); };
+  $("#review-next").onclick = () => { reviewIndex++; renderReview(state.current); };
+  document.addEventListener("click", e => {
+    const link = e.target.closest('a[href^="/api/documents/"][href$="/json"]');
+    if (!link || link.download) return;
+    const doc = state.docs.find(d => link.pathname === `/api/documents/${d.id}/json`);
+    if (doc && !confirmCaseExport([doc])) e.preventDefault();
   });
   $("#btn-copy").addEventListener("click", copyJson);
   $("#btn-llm").addEventListener("click", refineWithLlm);

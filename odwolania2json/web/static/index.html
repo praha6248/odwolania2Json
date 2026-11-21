@@ -64,6 +64,12 @@
         </div>
       </div>
 
+      <section class="card case-panel hidden" id="case-panel">
+        <h2>Spójność sprawy</h2>
+        <p>Wybierz dokumenty jednej sprawy, aby porównać podmiot i numer postępowania przed eksportem.</p>
+        <div class="case-files" id="case-files"></div>
+        <div id="case-result" aria-live="polite"></div>
+      </section>
       <div class="card table-card">
         <div class="toolbar">
           <label class="field-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="table-search" aria-label="Szukaj w tabeli" placeholder="Szukaj w tabeli"></label>
@@ -132,11 +138,16 @@
           </div>
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="json">JSON</button>
+            <button class="tab" data-tab="review">Weryfikacja</button>
             <button class="tab" data-tab="fields">Źródła</button>
             <button class="tab" data-tab="text">Tekst</button>
             <button class="tab" data-tab="class">Klasyfikacja</button>
           </div>
           <div class="tab-body" id="tab-json"><pre class="code" id="d-json"></pre></div>
+          <div class="tab-body hidden" id="tab-review">
+            <div id="review-field" aria-live="polite"></div>
+            <div class="actions"><button class="btn" id="review-prev">Poprzednie</button><button class="btn" id="review-next">Następne</button></div>
+          </div>
           <div class="tab-body hidden" id="tab-fields"><div id="d-fields"></div></div>
           <div class="tab-body hidden" id="tab-text"><pre class="code text" id="d-text"></pre></div>
           <div class="tab-body hidden" id="tab-class"><div id="d-class"></div></div>

@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .. import __version__
 from ..config import load_settings
 from ..pipeline import DocumentResult, Processor
+from .comparison import case_values
 
 STATIC = Path(__file__).resolve().parent / "static"
 
@@ -60,6 +61,7 @@ def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, st
         "doc_label": settings_labels.get(result.doc_type or "", "Nierozpoznany"),
         "data": result.data,
         "fields": result.fields,
+        "case_values": case_values(result.doc_type, result.data, result.text or ""),
         "classification": result.trace()["classification"],
         "seconds": round(result.seconds, 3),
         "error": result.error,
