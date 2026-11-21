@@ -13,6 +13,8 @@ NAME = "Odwolania2JSON"
 ICON = str(ROOT / "packaging" / ("icon.ico" if sys.platform == "win32" else "icon.png"))
 
 datas = [(str(ROOT / "odwolania2json" / "web" / "static"), "odwolania2json/web/static"), (str(ROOT / "config"), "config")]
+if sys.platform.startswith("linux"):
+    datas += [(str(ROOT / "packaging" / name), "packaging") for name in ("linux_window.py", "icon.png")]
 binaries = []
 hiddenimports = ["odwolania2json.extractors"]
 for package in ("rapidocr", "onnxruntime", "pypdfium2", "pypdfium2_raw", "morfeusz2"):
