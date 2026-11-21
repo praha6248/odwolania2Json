@@ -136,7 +136,7 @@ Wystarczy nowy plik `config/document_types/<typ>.yaml`. Przykład i opis wszystk
 
 ## LLM (opcjonalnie)
 
-Reguły nie potrzebują sieci ani GPU, a LLM jest **opcjonalny i domyślnie wyłączony**. Włącza się go w interfejsie (*Ustawienia*: przełącznik, adres, model, klucz i przycisk „Testuj połączenie”), dla pojedynczego dokumentu przyciskiem *Uzupełnij przez LLM*, w CLI flagą `--llm` albo zmiennymi środowiskowymi (wzór w `.env.example`):
+Wersja zgłoszona do oceny działa **bez LLM**: reguły osiągają F1 1.000 na zbiorze UZP, nie potrzebują sieci, GPU ani klucza API i nie generują kosztów. LLM jest **opcjonalny i domyślnie wyłączony**; służy do funkcji dodatkowych (tryb dokładny, streszczenia, asystent RAG). Włącza się go w interfejsie (*Ustawienia*: przełącznik, adres, model, klucz i przycisk „Testuj połączenie”), dla pojedynczego dokumentu przyciskiem *Uzupełnij przez LLM*, w CLI flagą `--llm` albo zmiennymi środowiskowymi (wzór w `.env.example`):
 
 ```bash
 O2J_LLM_ENABLED=true
@@ -175,3 +175,7 @@ Workflowy GitHub Actions:
 - `bump version`: wersja zawsze o jeden patch powyżej ostatniego wydania;
 - `release`: budowa paczek PyInstaller i instalatora Inno Setup, publikacja wydania oraz obrazu Docker w GHCR;
 - `download page`: strona z pobieraniem na GitHub Pages.
+
+## Licencja
+
+Apache License 2.0, pełny tekst w pliku [LICENSE](LICENSE). Wszystkie zależności są open source.
