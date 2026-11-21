@@ -169,7 +169,7 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
             name = cut_name(chunk)
             data = {"imie_nazwisko": None, "nazwa": name, **ids_in(chunk)}
             rep_match = fx.search(r"reprezentowan\w+\s+przez\s*:?\s*([^\n(]+(?:\n[^\n(]+)?)", chunk, re.I)
-            inline = signature_names(rep_match.group(1).replace(",", "\n")) if rep_match else []
+            inline = signature_names(re.sub(r"\s*\n\s*", " ", rep_match.group(1)).replace(",", "\n")) if rep_match else []
             principals.append({"data": data, "start": start, "signers": inline})
 
     for item in principals:
@@ -180,12 +180,23 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
     signatures = signers_by_principal(text, [p["data"]["nazwa"] or "" for p in principals])
     result = []
     for index, item in enumerate(principals):
-        names = item.get("signers") or (signatures[index] if index < len(signatures) else [])
+        signed = signatures[index] if index < len(signatures) else []
+        inline = list(item.get("signers") or [])
+        elsewhere = {n for other in principals if other is not item for n in other.get("signers") or []}
+        names = inline + [n for n in signed if not similar_name(n, inline) and not similar_name(n, list(elsewhere))] if inline else signed
         result.append({"data": item["data"], "podpisujacy": [{"imie_nazwisko": n} for n in names]})
     if not result:
         return None, None
     start = principals[0]["start"]
     return result, Evidence("principals", snippet(text, start, start + 120), start, start + 120)
+
+
+def similar_name(name: str, others: list[str], cutoff: float = 0.8) -> bool:
+    """Tell whether a person name matches one of the others, allowing OCR differences in a few letters."""
+    import difflib
+
+    key = fx.fold(name).lower()
+    return any(difflib.SequenceMatcher(None, key, fx.fold(other).lower()).ratio() >= cutoff for other in others)
 
 
 def signers_by_principal(text: str, names: list[str]) -> list[list[str]]:
