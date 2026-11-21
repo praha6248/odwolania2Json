@@ -39,6 +39,7 @@ class Settings:
     plugins: list[str] = field(default_factory=lambda: ["odwolania2json.extractors"])
     document_types: list[DocumentType] = field(default_factory=list)
     formal_checks: list[dict[str, Any]] = field(default_factory=list)
+    config_dir: Path | None = None
 
     def get_type(self, name: str) -> DocumentType | None:
         """Return the document type with the given name, if configured."""
@@ -47,10 +48,14 @@ class Settings:
 
 def load_document_type(path: Path) -> DocumentType:
     """Parse a single document type YAML file."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return document_type_from_dict(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, path)
+
+
+def document_type_from_dict(data: dict[str, Any], path: Path | None = None) -> DocumentType:
+    """Build a document type from its YAML structure."""
     missing = {"name", "classify", "fields", "template"} - data.keys()
     if missing:
-        raise ValueError(f"{path}: missing keys {sorted(missing)}")
+        raise ValueError(f"{path or data.get('name')}: missing keys {sorted(missing)}")
     return DocumentType(
         name=data["name"],
         label=data.get("label", data["name"]),
@@ -123,4 +128,5 @@ def load_settings(config_dir: str | Path | None = None) -> Settings:
         plugins=plugins,
         document_types=types,
         formal_checks=list(checks),
+        config_dir=config_dir,
     )

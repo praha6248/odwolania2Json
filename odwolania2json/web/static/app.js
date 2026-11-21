@@ -103,7 +103,7 @@ function highlight(data) {
   });
 }
 
-const ROUTES = { list: "dokumenty", cases: "sprawy", detail: "dokument", assistant: "asystent", types: "typy", settings: "ustawienia", help: "pomoc" };
+const ROUTES = { list: "dokumenty", cases: "sprawy", detail: "dokument", assistant: "asystent", types: "typy", wizard: "nowy-typ", settings: "ustawienia", help: "pomoc" };
 const TABS = { json: "json", review: "weryfikacja", fields: "zrodla", text: "tekst", class: "klasyfikacja" };
 
 /** Write the current view (and document tab) into the URL hash without adding history noise. */
@@ -134,10 +134,11 @@ function go(view) {
   state.view = view;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `view-${view}`));
   $("#more-sheet").classList.add("hidden");
-  const secondary = ["types", "settings", "help"].includes(view);
+  const secondary = ["types", "wizard", "settings", "help"].includes(view);
+  if (view === "wizard") openWizard();
   $("#more-btn").classList.toggle("active", secondary);
   document.querySelectorAll(".rail-btn[data-go]").forEach((b) => {
-    const active = b.dataset.go === view;
+    const active = b.dataset.go === (view === "wizard" ? "types" : view);
     b.classList.toggle("active", active);
     if (active) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
@@ -731,12 +732,190 @@ async function startUpdate() {
   }
 }
 
+const wz = { doc: null, fields: {}, selection: null, timer: null, touchedName: false };
+
+/** Parse "phrase: weight" lines into a keyword map. */
+function parseWeights(text) {
+  const out = {};
+  text.split("\n").map((l) => l.trim()).filter(Boolean).forEach((line) => {
+    const at = line.lastIndexOf(":");
+    const weight = at > 0 ? Number(line.slice(at + 1)) : NaN;
+    out[(Number.isFinite(weight) ? line.slice(0, at) : line).trim()] = Number.isFinite(weight) ? weight : 1;
+  });
+  return out;
+}
+
+/** Format a keyword map as "phrase: weight" lines. */
+function formatWeights(map) {
+  return Object.entries(map || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+}
+
+/** Identifier from a display name (ASCII, lowercase, underscores). */
+function slugify(text) {
+  return text.normalize("NFKD").replace(/ł/g, "l").replace(/Ł/g, "L").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+}
+
+/** The current wizard draft in the YAML structure of a document type. */
+function wizardDraft() {
+  return {
+    name: $("#wz-name").value.trim() || slugify($("#wz-label").value) || "nowy_typ",
+    label: $("#wz-label").value.trim() || "Nowy typ",
+    classify: { head_chars: 800, head_keywords: parseWeights($("#wz-head").value), keywords: parseWeights($("#wz-kw").value) },
+    fields: wz.fields,
+  };
+}
+
+/** Open the wizard with the first text document as the sample. */
+async function openWizard() {
+  const docs = state.docs;
+  $("#wz-doc").innerHTML = docs.length
+    ? docs.map((d) => `<option value="${d.id}">${esc(d.filename)} · ${esc(d.doc_label)}</option>`).join("")
+    : '<option value="">Najpierw dodaj przykładowy PDF</option>';
+  if (!docs.length) {
+    $("#wz-text").textContent = "Dodaj przykładowy PDF przyciskiem obok.";
+    return;
+  }
+  const pick = docs.find((d) => d.id === wz.doc) || docs.find((d) => !d.doc_type) || docs[0];
+  $("#wz-doc").value = pick.id;
+  await selectSample(pick.id, !Object.keys(wz.fields).length);
+}
+
+/** Show a sample document and optionally suggest keywords from it. */
+async function selectSample(id, suggest) {
+  wz.doc = id;
+  const doc = await api(`/api/documents/${id}`).catch(() => null);
+  $("#wz-text").textContent = doc && doc.text ? doc.text : "Ten dokument nie ma tekstu.";
+  if (suggest) {
+    const kw = await api(`/api/wizard/keywords/${id}`).catch(() => ({}));
+    $("#wz-head").value = formatWeights(kw.head_keywords);
+    $("#wz-kw").value = formatWeights(kw.keywords);
+  }
+  schedulePreview();
+}
+
+/** Character offsets of the current selection inside the sample text. */
+function selectionOffsets() {
+  const sel = window.getSelection();
+  const box = $("#wz-text");
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
+  const pre = document.createRange();
+  pre.selectNodeContents(box);
+  pre.setEnd(range.startContainer, range.startOffset);
+  const start = pre.toString().length;
+  return { start, end: start + range.toString().length, text: range.toString() };
+}
+
+/** Reflect the current selection in the selection bar. */
+function updateSelection() {
+  if (state.view !== "wizard") return;
+  const sel = selectionOffsets();
+  if (sel && sel.text.trim()) wz.selection = sel;
+  else if (!sel) return;
+  $("#wz-selection").innerHTML = wz.selection ? `Zaznaczono: <b>${esc(wz.selection.text.trim().slice(0, 60))}</b>` : "Nic nie zaznaczono";
+  $("#wz-add").disabled = !wz.selection;
+}
+
+/** Turn the selection into a field with a suggested rule. */
+async function addWizardField() {
+  if (!wz.selection || !wz.doc) return;
+  try {
+    const s = await api("/api/wizard/suggest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: wz.doc, start: wz.selection.start, end: wz.selection.end }) });
+    let name = s.name;
+    for (let i = 2; wz.fields[name]; i++) name = `${s.name}_${i}`;
+    wz.fields[name] = s.field;
+    wz.selection = null;
+    window.getSelection().removeAllRanges();
+    $("#wz-selection").textContent = "Nic nie zaznaczono";
+    $("#wz-add").disabled = true;
+    renderWizardFields();
+    schedulePreview();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+/** Describe a field rule in a short human readable form. */
+function ruleText(spec) {
+  const rule = (spec.extract || [])[0] || {};
+  if (rule.type === "label") return `po etykiecie „${(rule.labels || [""])[0].replace(/\\s\+/g, " ").replace(/\\/g, "")}”${rule.until ? " (wiele linii)" : ""}`;
+  if (rule.type === "regex" && rule.occurrence === undefined) return spec.description || "wzorzec";
+  if (rule.type === "regex") return `wzorzec, wystąpienie ${rule.occurrence + 1}`;
+  return rule.type || "—";
+}
+
+/** Render the list of wizard fields with their rules and values. */
+function renderWizardFields(values = {}) {
+  const names = Object.keys(wz.fields);
+  $("#wz-fields").innerHTML = names.length ? names.map((n) => {
+    const f = wz.fields[n];
+    const v = values[n];
+    return `<div class="wz-field">
+      <div class="wz-field-top"><input class="wz-fname mono" value="${esc(n)}" data-rename="${esc(n)}" aria-label="Nazwa pola">
+        <span class="chip neutral">${esc((f.normalize || []).join(", ") || "tekst")}</span>
+        <button class="icon-btn danger" data-remove="${esc(n)}" title="Usuń pole" aria-label="Usuń pole ${esc(n)}">${ICON_TRASH}</button></div>
+      <div class="wz-rule">${esc(ruleText(f))}</div>
+      <div class="wz-value ${v === null || v === undefined ? "empty" : ""}">${v === null || v === undefined ? "brak wartości" : esc(typeof v === "object" ? JSON.stringify(v) : v)}</div></div>`;
+  }).join("") : '<div class="empty-state small"><b>Brak pól</b><span>Zaznacz wartość w tekście po lewej i kliknij „Dodaj jako pole”.</span></div>';
+}
+
+/** Re-run the preview shortly after the last change. */
+function schedulePreview() {
+  clearTimeout(wz.timer);
+  wz.timer = setTimeout(runPreview, 250);
+}
+
+/** Run the draft type on the sample and show the result, score and collisions. */
+async function runPreview() {
+  if (!wz.doc) return;
+  try {
+    const p = await api("/api/wizard/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: wz.doc, draft: wizardDraft() }) });
+    const values = Object.fromEntries(p.fields.map((f) => [f.field, f.value]));
+    renderWizardFields(values);
+    $("#wz-json").innerHTML = highlight(p.data);
+    $("#wz-yaml").textContent = p.yaml;
+    $("#wz-status").innerHTML = p.recognized
+      ? `<span class="ok-text">Przykład rozpoznany</span> · ${p.score} pkt (${esc(p.hits.join(", "))})`
+      : `<span class="warn">Przykład nierozpoznany</span> · ${p.score} pkt. Dodaj frazę z nagłówka z wagą 5.`;
+    const collisions = p.samples.filter((x) => x.matches && x.doc_type);
+    const alike = p.samples.filter((x) => x.matches && !x.doc_type);
+    const parts = [];
+    if (alike.length) parts.push(`<div class="wz-ok">Pasuje też do ${alike.length} ${plural(alike.length, "innego dokumentu", "innych dokumentów", "innych dokumentów")} spoza puli: ${alike.map((x) => `<b>${esc(x.filename)}</b> (${x.filled}/${p.field_count} pól)`).join(", ")}.</div>`);
+    if (collisions.length) parts.push(`<div class="wz-collide">Koliduje z istniejącym typem: ${collisions.map((x) => `<b>${esc(x.filename)}</b> (${esc(x.doc_label)}, ${x.score} pkt)`).join(", ")}. Dodaj frazę charakterystyczną tylko dla tego typu albo zmniejsz wagi fraz wspólnych.</div>`);
+    if (!parts.length && p.samples.length) parts.push(`<div class="wz-ok">Nie koliduje z ${p.samples.length} ${plural(p.samples.length, "innym dokumentem", "innymi dokumentami", "innymi dokumentami")}.</div>`);
+    $("#wz-samples").innerHTML = parts.join("");
+  } catch (e) {
+    $("#wz-status").innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  }
+}
+
+/** Save the draft as a YAML type, reload types and reprocess documents outside the pool. */
+async function saveWizard(overwrite = false) {
+  if (!Object.keys(wz.fields).length) return toast("Dodaj co najmniej jedno pole");
+  try {
+    const res = await api("/api/types", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: wizardDraft(), overwrite }) });
+    for (const d of state.docs.filter((x) => !x.doc_type)) {
+      updateDoc(await api(`/api/documents/${d.id}/reprocess`, { method: "POST" }));
+    }
+    wz.fields = {};
+    ["#wz-label", "#wz-name", "#wz-head", "#wz-kw"].forEach((s) => { $(s).value = ""; });
+    await loadInfo();
+    await refreshCases();
+    go("types");
+    toast(`Zapisano typ ${res.name} (${res.path.split(/[\\/]/).slice(-2).join("/")})`);
+  } catch (e) {
+    if (/już istnieje/.test(e.message) && window.confirm(`${e.message} Nadpisać?`)) return saveWizard(true);
+    toast(e.message);
+  }
+}
+
 /** Load app info, document types and update status. */
 async function loadInfo() {
   const info = await api("/api/info");
   state.types = info.types;
   $("#d-type").innerHTML = '<option value="">Typ: automatycznie</option>' + info.types.map((t) => `<option value="${esc(t.name)}">${esc(t.label)}</option>`).join("");
-  $("#types").innerHTML = info.types.map((t) => `<div class="card type-card">
+  $("#types").innerHTML = info.types.map((t) => `<div class="card type-card ${t.source && !["odwolanie.yaml", "pelnomocnictwo.yaml", "przelew.yaml"].includes(t.source) ? "custom" : ""}">
       <span class="chip ${esc(t.name)}">${esc(t.name)}</span><h3>${esc(t.label)}</h3>
       <div class="muted">Plik: <code>${esc(t.source)}</code></div>
       <div class="type-fields">${t.fields.map((f) => `<span class="chip neutral">${esc(f)}</span>`).join("")}</div></div>`).join("");
@@ -865,6 +1044,45 @@ function bind() {
     await api("/api/reload", { method: "POST" });
     await loadInfo();
     toast("Konfiguracja przeładowana");
+  });
+  $("#btn-new-type").addEventListener("click", () => go("wizard"));
+  $("#wz-cancel").addEventListener("click", () => go("types"));
+  $("#wz-save").addEventListener("click", () => saveWizard());
+  $("#wz-doc").addEventListener("change", (e) => selectSample(e.target.value, !Object.keys(wz.fields).length));
+  $("#wz-upload").addEventListener("click", () => $("#wz-file").click());
+  $("#wz-file").addEventListener("change", async (e) => {
+    const form = new FormData();
+    [...e.target.files].forEach((f) => form.append("files", f));
+    e.target.value = "";
+    try {
+      const results = await busy("Wczytuję przykład…", () => api("/api/documents", { method: "POST", body: form }));
+      state.docs.push(...results);
+      renderTable();
+      if (results[0]) { wz.doc = results[0].id; openWizard(); }
+    } catch (err) { toast(err.message); }
+  });
+  document.addEventListener("selectionchange", updateSelection);
+  $("#wz-add").addEventListener("click", addWizardField);
+  $("#wz-label").addEventListener("input", () => { if (!wz.touchedName) $("#wz-name").value = slugify($("#wz-label").value); schedulePreview(); });
+  $("#wz-name").addEventListener("input", () => { wz.touchedName = true; });
+  ["#wz-head", "#wz-kw"].forEach((sel) => $(sel).addEventListener("input", schedulePreview));
+  $("#wz-fields").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-remove]");
+    if (!b) return;
+    delete wz.fields[b.dataset.remove];
+    renderWizardFields();
+    schedulePreview();
+  });
+  $("#wz-fields").addEventListener("change", (e) => {
+    const input = e.target.closest("[data-rename]");
+    if (!input) return;
+    const old = input.dataset.rename;
+    const name = slugify(input.value) || old;
+    if (name !== old && !wz.fields[name]) {
+      wz.fields = Object.fromEntries(Object.entries(wz.fields).map(([k, v]) => [k === old ? name : k, v]));
+    }
+    renderWizardFields();
+    schedulePreview();
   });
   $("#search").addEventListener("input", () => { if (state.view !== "list") go("list"); renderTable(); });
   $("#table-search").addEventListener("input", renderTable);

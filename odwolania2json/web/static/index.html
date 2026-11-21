@@ -206,9 +206,47 @@
       <div class="page-head">
         <div><div class="crumbs">Konfiguracja <span>/</span> Typy dokumentów</div><h1>Typy dokumentów</h1>
           <p class="muted lead">Każdy typ to plik YAML w <code>config/document_types/</code>. Nowy typ lub pole dodasz bez zmian w kodzie.</p></div>
-        <button class="btn primary" id="btn-reload">Przeładuj konfigurację</button>
+        <div class="head-actions"><button class="btn" id="btn-reload">Przeładuj konfigurację</button>
+          <button class="btn primary" id="btn-new-type"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nowy typ</button></div>
       </div>
       <div class="type-grid" id="types"></div>
+    </section>
+
+    <section class="view hidden" id="view-wizard">
+      <div class="page-head">
+        <div><div class="crumbs">Konfiguracja <span>/</span> Typy dokumentów <span>/</span> Nowy typ</div><h1>Nowy typ dokumentu</h1>
+          <p class="muted lead">Wybierz przykładowy dokument i zaznacz w jego tekście wartości pól. Kreator zaproponuje reguły, pokaże wynik na żywo i zapisze typ jako zwykły plik YAML.</p></div>
+        <div class="head-actions"><button class="btn" id="wz-cancel">Anuluj</button><button class="btn primary" id="wz-save">Zapisz typ</button></div>
+      </div>
+      <div class="wizard-grid">
+        <div class="card wz-sample">
+          <div class="card-head"><div><h2><span class="step-dot">1</span>Przykładowy dokument</h2><p class="muted">Zaznacz myszką wartość, np. datę po „Data operacji”.</p></div></div>
+          <div class="wz-pick"><select id="wz-doc" aria-label="Przykładowy dokument"></select><button class="btn" id="wz-upload">Dodaj PDF</button><input type="file" id="wz-file" accept="application/pdf" hidden></div>
+          <div class="wz-selbar" id="wz-selbar"><span id="wz-selection" class="muted">Nic nie zaznaczono</span><button class="btn primary" id="wz-add" disabled>Dodaj jako pole</button></div>
+          <pre class="wz-text" id="wz-text"></pre>
+        </div>
+        <div class="wz-side">
+          <div class="card">
+            <div class="card-head"><div><h2><span class="step-dot">2</span>Nazwa i rozpoznawanie</h2><p class="muted">Frazy z wagami decydują, czy dokument należy do typu. Jedna fraza w linii: <code>fraza: waga</code>.</p></div></div>
+            <div class="form">
+              <label class="field"><span class="field-label">Nazwa wyświetlana</span><input id="wz-label" placeholder="np. Wezwanie do uzupełnienia wpisu"></label>
+              <label class="field"><span class="field-label">Identyfikator (nazwa pliku)</span><input id="wz-name" placeholder="wezwanie_wpis"></label>
+              <label class="field"><span class="field-label">Frazy w nagłówku</span><textarea id="wz-head" rows="2"></textarea></label>
+              <label class="field"><span class="field-label">Frazy w treści</span><textarea id="wz-kw" rows="3"></textarea></label>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2><span class="step-dot">3</span>Pola</h2><p class="muted">Każde pole trafi do wyniku JSON pod swoją nazwą.</p></div></div>
+            <div id="wz-fields" class="wz-fields"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2><span class="step-dot">4</span>Podgląd</h2><p class="muted" id="wz-status">Dodaj pola, aby zobaczyć wynik.</p></div></div>
+            <div id="wz-samples" class="wz-samples"></div>
+            <pre class="code wz-json" id="wz-json">{}</pre>
+            <details class="wz-yaml"><summary>Plik YAML</summary><pre id="wz-yaml"></pre></details>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="view hidden" id="view-settings">
