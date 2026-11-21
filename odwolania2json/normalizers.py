@@ -196,13 +196,19 @@ def person_name(value: str) -> str | None:
     return " ".join(kept[:3]).rstrip(".")
 
 
+PLACEHOLDER = re.compile(r"_{3,}|\.{4,}|…{2,}|\[\s*(?:nazwa|imię)", re.I)
+MAX_NAME_LENGTH = 160
+
+
 @normalizer("entity_name")
 def entity_name(value: str) -> str | None:
-    """Clean an organization name of quotes, trailing punctuation and role markers."""
+    """Clean an organization name; reject form placeholders and runaway text that is not a name."""
     text = re.sub(r"\s+", " ", str(value)).strip()
     text = re.sub(r"\(dalej[^)]*\)?", "", text, flags=re.I)
     text = text.strip(" ,;:").strip("„”\"")
-    return text or None
+    if not text or PLACEHOLDER.search(text) or len(text) > MAX_NAME_LENGTH:
+        return None
+    return text
 
 
 @lru_cache(maxsize=1)
