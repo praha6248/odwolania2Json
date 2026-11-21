@@ -48,6 +48,12 @@ def test_cases_manual_edit_and_assistant(monkeypatch):
         ids[doc["doc_type"]] = doc["id"]
     cases = client.get("/api/cases").json()
     assert len(cases) == 1 and cases[0]["reference"] == "ZP.388.2026" and cases[0]["consistent"] and not cases[0]["missing_types"]
+    assert {c["id"]: c["status"] for c in cases[0]["checks"]}["pelnomocnik"] == "ok"
+
+    located = client.get(f"/api/documents/{ids['odwolanie']}/locate/numer_postepowania").json()["boxes"]
+    assert located and located[0]["page"] == 1
+    assert all(0 <= v <= 1 for rect in located[0]["rects"] for v in rect)
+    assert client.get(f"/api/documents/{ids['odwolanie']}/locate/nie_ma_takiego").status_code == 404
 
     edited = client.put(f"/api/documents/{ids['odwolanie']}/fields/czynnosc_powod_id", json={"value": "9"}).json()
     assert edited["data"]["OdwolanieKIO"]["czynnosc_powod_id"] == 9

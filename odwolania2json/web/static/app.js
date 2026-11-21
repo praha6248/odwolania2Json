@@ -324,14 +324,46 @@ function renderDetail(doc) {
   renderClassification(doc);
 }
 
+/** Highlight where a field value sits in the PDF preview and scroll to it. */
+async function locateField(doc, field) {
+  state.located = field;
+  document.querySelectorAll(".src.located").forEach((el) => el.classList.remove("located"));
+  document.querySelectorAll(".src.clickable").forEach((el) => { if (doc.fields[Number(el.dataset.field)].field === field) el.classList.add("located"); });
+  document.querySelectorAll("#d-pdf .hl").forEach((el) => el.remove());
+  const res = await api(`/api/documents/${doc.id}/locate/${encodeURIComponent(field)}`).catch(() => ({ boxes: [] }));
+  if (!res.boxes.length) {
+    toast(res.reason || "Nie znaleziono tego fragmentu w warstwie tekstowej PDF. Pokazuję go w zakładce Tekst.");
+    const f = doc.fields.find((x) => x.field === field);
+    if (f && f.start !== null) { showTab("text"); renderText(doc, [f.start, f.end]); }
+    return;
+  }
+  const figures = document.querySelectorAll("#d-pdf .page");
+  let first = null;
+  res.boxes.forEach(({ page, rects }) => {
+    const fig = figures[page - 1];
+    if (!fig) return;
+    const holder = fig.querySelector(".page-img");
+    const layer = holder.querySelector(".hl-layer") || holder.appendChild(Object.assign(document.createElement("div"), { className: "hl-layer" }));
+    rects.forEach(([x0, y0, x1, y1]) => {
+      const pad = 0.003;
+      const el = Object.assign(document.createElement("div"), { className: "hl", title: field });
+      Object.assign(el.style, { left: `${(x0 - pad) * 100}%`, top: `${(y0 - pad) * 100}%`, width: `${(x1 - x0 + 2 * pad) * 100}%`, height: `${(y1 - y0 + 2 * pad) * 100}%` });
+      layer.appendChild(el);
+      first = first || el;
+    });
+  });
+  if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 /** Render the PDF preview as server-rendered page images (works without a browser PDF plugin). */
 async function renderPages(doc) {
+  state.located = null;
   const box = $("#d-pdf");
   box.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
   try {
     const { pages } = await api(`/api/documents/${doc.id}/pages`);
     box.innerHTML = `<div class="pages">${Array.from({ length: pages }, (_, i) => `
-      <figure class="page"><img loading="${i < 2 ? "eager" : "lazy"}" src="/api/documents/${doc.id}/pages/${i + 1}.png" alt="Strona ${i + 1} z ${pages}: ${esc(doc.filename)}"><figcaption>Strona ${i + 1} z ${pages}</figcaption></figure>`).join("")}</div>`;
+      <figure class="page"><div class="page-img"><img loading="${i < 2 ? "eager" : "lazy"}" src="/api/documents/${doc.id}/pages/${i + 1}.png" alt="Strona ${i + 1} z ${pages}: ${esc(doc.filename)}"></div><figcaption>Strona ${i + 1} z ${pages}</figcaption></figure>`).join("")}</div>`;
   } catch (e) {
     box.innerHTML = `<div class="empty-state"><b>Nie udało się wyświetlić podglądu</b><a class="btn" href="/api/documents/${doc.id}/pdf" target="_blank">Otwórz PDF</a></div>`;
   }
@@ -383,6 +415,7 @@ function renderReview(doc, items) {
         <button class="btn primary" data-save="${esc(f.field)}">Zapisz</button>
         ${llm !== null ? `<button class="btn" data-use-llm="${esc(f.field)}">Użyj wartości LLM</button>` : ""}
         <button class="btn" data-accept="${esc(f.field)}">${shown ? "Zatwierdź" : "Zostaw puste"}</button>
+        ${f.start !== null && f.start !== undefined ? `<button class="btn ghost" data-locate="${esc(f.field)}">Zaznacz w PDF</button>` : ""}
       </div></div>`;
   }).join("")}</div>`;
 }
@@ -433,10 +466,11 @@ function renderSources(doc) {
       f.llm_check === "rozbieżne" ? '<span class="chip err">LLM: rozbieżne</span>' : "",
       f.ambiguous ? '<span class="chip none">niejednoznaczne</span>' : "",
     ].join("");
-    return `<div class="src ${clickable ? "clickable" : ""}" data-field="${i}" ${clickable ? 'tabindex="0"' : ""}>
+    return `<div class="src ${clickable ? "clickable" : ""} ${state.located === f.field ? "located" : ""}" data-field="${i}" ${clickable ? 'tabindex="0"' : ""}>
       <div class="src-top"><span class="src-name">${esc(f.field)}${flags}</span><span class="src-method">${esc(f.source)} · ${esc(f.method || "brak dopasowania")}</span></div>
       <div class="src-value">${value === null || value === undefined ? '<span class="muted">null</span>' : esc(value)}</div>
-      ${f.snippet ? `<div class="src-snip">„…${esc(f.snippet)}…”</div>` : ""}</div>`;
+      ${f.snippet ? `<div class="src-snip">„…${esc(f.snippet)}…”</div>` : ""}
+      ${clickable ? `<div class="src-actions"><span class="src-hint">Kliknij, aby zaznaczyć w dokumencie</span><button class="link-btn" data-show-text="${i}">Pokaż w tekście</button></div>` : ""}</div>`;
   }).join("")}</div>`;
 }
 
@@ -758,13 +792,19 @@ function bind() {
     const card = e.target.closest(".src.clickable");
     if (!card || !state.current) return;
     const f = state.current.fields[Number(card.dataset.field)];
-    showTab("text");
-    renderText(state.current, [f.start, f.end]);
+    if (e.target.closest("[data-show-text]")) {
+      showTab("text");
+      renderText(state.current, [f.start, f.end]);
+      return;
+    }
+    locateField(state.current, f.field);
   });
   $("#d-review").addEventListener("click", (e) => {
     const save = e.target.closest("[data-save]");
     const use = e.target.closest("[data-use-llm]");
     const accept = e.target.closest("[data-accept]");
+    const locate = e.target.closest("[data-locate]");
+    if (locate) return locateField(state.current, locate.dataset.locate);
     if (save) return saveField(save.dataset.save, $(`[data-edit="${CSS.escape(save.dataset.save)}"]`).value);
     if (use) {
       const f = state.current.fields.find((x) => x.field === use.dataset.useLlm);

@@ -339,6 +339,20 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             cache[number] = buffer.getvalue()
         return Response(cache[number], media_type="image/png", headers={"Cache-Control": "max-age=3600"})
 
+    @app.get("/api/documents/{doc_id}/locate/{name}")
+    def locate_field(doc_id: str, name: str) -> dict[str, Any]:
+        """Boxes on the PDF pages where a field value was found, for highlighting in the preview."""
+        from ..locate import locate
+
+        item = store.get(doc_id)
+        result = item.get("result") or {}
+        field = next((f for f in result.get("fields") or [] if f["field"] == name), None)
+        if field is None:
+            raise HTTPException(status_code=404, detail="Nieznane pole")
+        if result.get("ocr"):
+            return {"field": name, "boxes": [], "reason": "Skan bez warstwy tekstowej: źródło zaznaczamy w zakładce Tekst."}
+        return {"field": name, "boxes": locate(item["path"], field, result.get("text") or "")}
+
     @app.get("/api/documents/{doc_id}/json")
     def download(doc_id: str) -> Response:
         """Download the output JSON named after the source PDF."""
