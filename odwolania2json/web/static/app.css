@@ -512,4 +512,8 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
 @media (max-width: 720px) { .kpi-icon svg { width: 24px; height: 24px; } }
 
 .kpi-icon, .kpi-icon.accent { color: var(--accent); }
-.dropzone:hover { background: var(--accent-soft); }
+.kpi-icon.violet { color: var(--violet); }
+.kpi-icon.green { color: var(--green); }
+.kpi-icon.blue { color: var(--blue); }
+.dropzone { background: var(--accent-soft); border-color: var(--accent-line); }
+.dropzone:hover { background: #ffeadf; border-color: var(--accent); }
