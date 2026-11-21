@@ -17,10 +17,15 @@ classify:
     pelnomocnictwo: 4
     pełnomocnictwo: 4
   require:
+    - name: dane identyfikacyjne (NIP, KRS, PESEL lub tytuł i nazwisko pełnomocnika)
+      scope: all
+      any: ['\b(?:NIP|KRS|PESEL|REGON)\b\s*:?\s*\d', '(?:adw\.|r\.\s?pr\.|radc\w+\s+prawn\w+|adwokat\w*)\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+\s+[A-ZĄĆĘŁŃÓŚŹŻ]']
     - name: tytuł PEŁNOMOCNICTWO lub mocodawca
       scope: all
       any: ['^\s*P\s*E\s*Ł\s*N\s*O\s*M\s*O\s*C\s*N\s*I\s*C\s*T\s*W\s*O\b', '^\s*Mocodawca\b', 'Mocodawcą\s+jest', 'dalej[^)]{0,25}Mocodawc', '(?:udzielam|udziela|udzielają|ustanawiam|upoważniam)\s+(?:niniejszym\s+)?(?:pełnomocnictwa|pełnomocnikiem)']
   negative:
+    '\(\s*wzór\s*\)|^\s*WZÓR\b': 30
+    'Załącznik\s+nr\s*\d+\s+do\s+(?:SWZ|SIWZ|zapytania)': 30
     '^\s*Sygn\.?\s*akt': 30
     '^\s*(?:WYROK|POSTANOWIENIE|UCHWAŁA|ZARZĄDZENIE)\s*$': 30
     'Krajowa\s+Izba\s+Odwoławcza\s*[-–]?\s*w\s+składzie': 30
