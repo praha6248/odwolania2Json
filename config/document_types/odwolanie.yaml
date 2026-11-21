@@ -30,9 +30,14 @@ sections:
     end: ['\s2\)', ';\s*\n']
     max_chars: 600
   first_act_sentence:
-    start: 'Zamawiający\s+w\s+dniu'
+    start: 'Zamawiający\s+(?:[\wąćęłńóśźż]+\s+){0,6}?w\s+dniu'
     include_start: true
-    end: ['\n\s*Zarzut', '\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])']
+    end: ['\n\s*Zarzut', '\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])', ';', '\n\s*\d\)']
+    max_chars: 400
+  challenged_act:
+    start: '(?:wobec|na)\s+(?:treści|czynności|zaniechani\w*|ogłoszeni\w*|wyboru|odrzuceni\w*|wykluczeni\w*|unieważnieni\w*)'
+    include_start: true
+    end: ['\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])']
     max_chars: 400
   first_charge:
     start: 'Zarzut\s+nr\s*1'
@@ -51,7 +56,7 @@ fields:
 
   miejscowosc:
     description: Place from the place/date line in the document header.
-    normalize: [strip]
+    normalize: [strip, place]
     extract:
       - type: regex
         scope: header
@@ -87,6 +92,9 @@ fields:
           - {value: 2, priority: 1, keywords: ['wyb(?:ór|or\w*)\s+(?:jako\s+najkorzystniejszej\s+)?oferty', 'najkorzystniejsz']}
           - {value: 4, priority: 1, keywords: ['opublikował\w*\s+Specyfikac', 'ustaleni\w*\s+treści\s+(?:SWZ|Specyfikacji)', 'treści\s+SWZ', 'Specyfikacj\w*\s+Warunków']}
           - {value: 11, priority: 0, keywords: ['Opis\w*\s+Przedmiotu\s+Zamówienia', 'opisani\w*\s+przedmiotu', '\bOPZ\b']}
+      - type: keyword_map
+        scope: challenged_act
+        options: *reasons
       - type: keyword_map
         scope: first_charge
         options: *reasons
@@ -147,9 +155,9 @@ fields:
     extract:
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|sygn\w*\.?)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|postępowani\w*\s+nr|sygn\w*\.?)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
       - type: regex
-        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+postępowania)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+postępowania|postępowani\w*\s+nr)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
 
   tytul:
     description: Title of the procurement.
@@ -157,10 +165,10 @@ fields:
     extract:
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:pn\.|pod\s+nazwą|nazwa\s+zamówienia\s*:?)\s*[„"“]([^”"]+)[”"]'
+        pattern: '(?:pn\.?|pod\s+nazwą|nazwa\s+zamówienia|przedmiotem\s+jest)\s*:?\s*[„"“]([^”"]{5,400}?)(?:[”"]|\s*\((?=post))'
         dotall: true
       - type: regex
-        pattern: '(?:pn\.|pod\s+nazwą)\s*[„"“]([^”"]+)[”"]'
+        pattern: '(?:pn\.?|pod\s+nazwą|przedmiotem\s+jest)\s*:?\s*[„"“]([^”"]{5,400}?)(?:[”"]|\s*\((?=post))'
         dotall: true
 
 template:

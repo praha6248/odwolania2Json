@@ -25,9 +25,10 @@ ID_PATTERNS = {
     "regon": r"REGON\s*[:]?\s*(\d{9}(?:\d{5})?)",
 }
 ADDRESS_STOP = (
-    r"(?:\s*\((?:KRS|NIP|REGON|dalej)|\s+(?:udziela|ustanawia|upoważnia)|,\s*(?:ul\.|al\.|pl\.|os\.|ulica|aleja|z siedzibą|wpisan|KRS|NIP|REGON|adres)|\s*\(dalej|\s+z siedzibą|\s*\n\s*(?:ul\.|al\.|pl\.|os\.|KRS|NIP|REGON)"
+    r"(?:\s*\((?:KRS|NIP|REGON|dalej)|\s+(?:ul|al|pl|os)\.\s|\s+(?:udziela|ustanawia|upoważnia)|,\s*(?:ul\.|al\.|pl\.|os\.|ulica|aleja|z siedzibą|wpisan|KRS|NIP|REGON|adres)|\s*\(dalej|\s+z siedzibą|\s*\n\s*(?:ul\.|al\.|pl\.|os\.|KRS|NIP|REGON)"
     r"|,\s*\d{2}-\d{3}|\s+reprezentowan|\s*;)"
 )
+ORG_WORDS = {"kancelaria", "prawna", "prawny", "radca", "adwokacka", "spółka", "partnerzy", "legal", "biuro"}
 NOT_PERSON_WORDS = {
     "Prezes", "Zarządu", "Wiceprezes", "Członek", "Prokurent", "Wspólnik", "Dyrektor", "Pełnomocnik",
     "Mocodawca", "Pełnomocnictwo", "Komplementariusz", "Właściciel", "Kancelaria", "Partner",
@@ -65,11 +66,22 @@ def ids_in(text: str) -> dict[str, str | None]:
     return out
 
 
+NAME_WINDOW = 250
+
+
 def cut_name(text: str) -> str | None:
     """Return the organization name at the start of a fragment, ending before its address or identifiers."""
     text = text.strip().lstrip(":;,. ").strip()
-    match = fx.search(ADDRESS_STOP, text, re.I)
-    name = text[: match.start()] if match else text.split("\n")[0]
+    match = fx.search(ADDRESS_STOP, text[:NAME_WINDOW], re.I)
+    if match:
+        name = text[: match.start()]
+    else:
+        lines = text.split("\n")
+        name = lines[0]
+        for line in lines[1:]:
+            if not re.match(rf"[{LOWER}]", line.strip()):
+                break
+            name += " " + line
     name = re.sub(r"\s*\n\s*", " ", name)
     return entity_name(name)
 
@@ -247,14 +259,28 @@ def parse_entity(block: str) -> dict[str, Any]:
         first = first.split("\n", 1)[1] if "\n" in first else ""
     first = re.sub(r"^\s*\d\)\s*[^\n]*:\s*\n", "", first)
     name = cut_name(first)
+    represented = fx.search(r"reprezentowan\w*\s+przez|pełnomocnik\w*\s*:", body, re.I)
     rep = fx.search(rf"reprezentowan\w*\s+przez\s*:?\s*(?:{TITLES}\s*)?({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
+    rep_name = person_name(re.sub(r"\s+", " ", rep.group(1))) if rep else None
+    if rep_name and any(w in NOT_PERSON_WORDS or w.lower() in ORG_WORDS for w in rep_name.split()):
+        rep_name = None
     firm = fx.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*tel)", body, re.I | re.S)
-    mail = fx.search(EMAIL, body[rep.start():] if rep else "")
+    firm_name = entity_name(re.sub(r"\s*\n\s*", " ", firm.group(1))) if firm else None
+    if not firm_name and represented:
+        after = body[represented.end():]
+        after = after[after.find("\n") + 1:] if "\n" in after else ""
+        for pattern in (r"^[^\n]*\bKancelari\w*[^\n]*$", r"^[^\n]*\b(?:Spółka\s+Partnerska|Adwokac\w+|Radc\w+\s+Prawn\w+)[^\n]*$"):
+            office = fx.search(pattern, after[:400], re.I | re.M)
+            if office:
+                firm_name = entity_name(office.group(0))
+                break
+    mail = fx.search(EMAIL, body[represented.start():] if represented else "")
     return {
         "name": name,
         **ids_in(body),
-        "rep": person_name(re.sub(r"\s+", " ", rep.group(1))) if rep else None,
-        "firm": entity_name(re.sub(r"\s*\n\s*", " ", firm.group(1))) if firm else None,
+        "represented": bool(represented),
+        "rep": rep_name,
+        "firm": firm_name,
         "mail": mail.group(0) if mail else None,
     }
 
@@ -291,7 +317,7 @@ def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
         "nazwa": entity["name"],
         "nip": entity["nip"],
         "regon": entity["regon"],
-        "przez-pelnomocnika": 1 if rep else 0,
+        "przez-pelnomocnika": 1 if rep or entity["represented"] or shared["represented"] else 0,
         "pelnomocnik": {
             "imie_nazwisko": rep,
             "nazwa": entity["firm"] or shared["firm"],

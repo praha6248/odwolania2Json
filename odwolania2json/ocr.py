@@ -16,14 +16,29 @@ from typing import Any
 log = logging.getLogger("odwolania2json.ocr")
 
 OCR_FIXES = [
+    (r"\bSp[óo][fłlt1]k(?=[aęiąo])", "Spółk"),
+    (r"\bsp[óo][fłlt1]k(?=[aęiąo])", "spółk"),
+    (r"\bograniczon[ao]\s+odpowiedzialno[sś]ci[ąa]\b", "ograniczoną odpowiedzialnością"),
+    (r"\bOdwo[lł]uj[aą]c(?=[yeag])", "Odwołując"),
+    (r"\bZamawiaj[aą]c(?=[yeag])", "Zamawiając"),
+    (r"\bPe[lł]nomocni", "Pełnomocni"),
+    (r"\bpe[lł]nomocni", "pełnomocni"),
+    (r"\bODWO[LŁ]ANIE\b", "ODWOŁANIE"),
+    (r"\bP[EĘ][LŁ]NOMOCNICTWO\b", "PEŁNOMOCNICTWO"),
+    (r"\bTytu[fłlt]\b", "Tytuł"),
+    (r"\bop[fłlt]ata\b", "opłata"),
+    (r"\bOp[fłlt]ata\b", "Opłata"),
     ("ž", "ż"),
     ("Ž", "Ż"),
-    (r"\bz 0\.o\.", "z o.o."),
+    (r"\bz [0oO]\.[0oO]\.", "z o.o."),
+    (r"\buf\.(?=\s)", "ul."),
     (r"\b0\.o\.", "o.o."),
     (r"\bo\.0\.", "o.o."),
     (r"\bo\.0\b", "o.o"),
     (r"\bS\.A,", "S.A.,"),
     (r"(?<=\d)O(?=\d)", "0"),
+    (r"(?<=PL)[oO](?=\d)", "0"),
+    (r"(?<=PL\d)[oO]", "0"),
     (r"(?<=\d)[lI](?=\d)", "1"),
     (r"\bKRS[:.]?\s*(?=\d)", "KRS "),
     (r"\bNlP\b|\bNIp\b", "NIP"),
@@ -37,35 +52,173 @@ def fix_ocr_text(text: str) -> str:
     return text
 
 
+def skew_angle(image: Any, limit: float = 3.0, step: float = 0.2) -> float:
+    """Estimate page skew in degrees by maximizing the variance of the horizontal projection profile."""
+    import numpy as np
+    from PIL import Image
+
+    gray = Image.fromarray(image).convert("L")
+    gray.thumbnail((1000, 1000))
+    ink = Image.fromarray((np.asarray(gray) < 160).astype(np.uint8) * 255)
+    best, best_score = 0.0, -1.0
+    for angle in np.arange(-limit, limit + step / 2, step):
+        profile = np.asarray(ink.rotate(float(angle), resample=Image.NEAREST, fillcolor=0)).sum(axis=1, dtype=np.float64)
+        score = float(np.var(np.diff(profile)))
+        if score > best_score:
+            best, best_score = float(angle), score
+    return best
+
+
+def deskew(image: Any) -> Any:
+    """Rotate a page image so text lines are horizontal."""
+    import numpy as np
+    from PIL import Image
+
+    angle = skew_angle(image)
+    if abs(angle) < 0.1:
+        return image
+    return np.asarray(Image.fromarray(image).rotate(angle, resample=Image.BICUBIC, expand=False, fillcolor=(255, 255, 255)))
+
+
 def render_pages(path: Path, scale: float, pages: list[int] | None = None) -> list[Any]:
-    """Render PDF pages to RGB numpy arrays."""
+    """Render PDF pages to RGB numpy arrays and straighten them."""
     import pypdfium2 as pdfium
 
     pdf = pdfium.PdfDocument(str(path))
     indices = pages if pages is not None else list(range(len(pdf)))
-    return [pdf[i].render(scale=scale).to_numpy() for i in indices]
+    return [deskew(pdf[i].render(scale=scale).to_numpy()[..., :3]) for i in indices]
 
 
-def boxes_to_text(boxes: list[Any], texts: list[str]) -> str:
-    """Rebuild reading order by grouping OCR boxes into lines by vertical position."""
-    items = []
-    for box, text in zip(boxes, texts):
-        ys = [p[1] for p in box]
-        xs = [p[0] for p in box]
-        items.append((min(ys), max(ys), min(xs), text))
-    items.sort(key=lambda i: (i[0], i[2]))
-    lines: list[list[tuple[float, float, float, str]]] = []
-    for item in items:
+LAYOUT_VERSION = 5
+LABEL = re.compile(r"^[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ ]{2,30}:$")
+
+
+def _group_lines(items: list[tuple[float, float, float, float, str]]) -> list[list[tuple[float, float, float, float, str]]]:
+    """Group OCR boxes (top, bottom, left, right, text) into visual lines by vertical overlap."""
+    lines: list[list[tuple[float, float, float, float, str]]] = []
+    for item in sorted(items, key=lambda i: (i[0], i[2])):
         if lines:
             last = lines[-1]
             top = min(i[0] for i in last)
             bottom = max(i[1] for i in last)
-            height = bottom - top
-            if item[0] < top + height * 0.5:
+            if item[0] < top + (bottom - top) * 0.5:
                 last.append(item)
                 continue
         lines.append([item])
-    return "\n".join(" ".join(i[3] for i in sorted(line, key=lambda i: i[2])) for line in lines)
+    return [sorted(line, key=lambda i: i[2]) for line in lines]
+
+
+def _float_labels(lines: list[list[tuple[float, float, float, float, str]]]) -> list[list[tuple[float, float, float, float, str]]]:
+    """Move left-column labels ('Zamawiający:') above the right-column value block they are centred against."""
+    out = [list(line) for line in lines]
+    index = 0
+    while index < len(out):
+        line = out[index]
+        head = line[0]
+        if len(line) > 1 and LABEL.match(head[4].strip()):
+            height = head[1] - head[0]
+            column = line[1][2]
+            start = index
+            while start > 0:
+                above = out[start - 1]
+                below_top = min(i[0] for i in out[start])
+                if min(i[2] for i in above) <= head[3] or min(i[0] for i in above) < head[0] - 2.5 * height:
+                    break
+                if abs(min(i[2] for i in above) - column) > 2 * height:
+                    break
+                if below_top - max(i[1] for i in above) > 0.9 * height:
+                    break
+                start -= 1
+            if start < index:
+                out[index] = line[1:]
+                out.insert(start, [head])
+                index += 1
+        index += 1
+    return out
+
+
+Line = list[tuple[float, float, float, float, str]]
+
+
+def _height(line: Line) -> float:
+    """Typical box height of a line."""
+    return max(1.0, sorted(i[1] - i[0] for i in line)[len(line) // 2])
+
+
+def _is_caption(text: str) -> bool:
+    """Tell whether a box looks like a field caption (short, no digits)."""
+    words = text.split()
+    return 0 < len(words) <= 4 and not re.search(r"\d", text)
+
+
+def _pair_label_rows(lines: list[Line]) -> list[Line]:
+    """Turn a row of captions followed by an aligned row of values into caption-value lines."""
+    out: list[Line] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        nxt = lines[index + 1] if index + 1 < len(lines) else None
+        tolerance = 3 * _height(line)
+        if (
+            nxt is not None
+            and len(line) >= 2
+            and len(line) == len(nxt)
+            and all(_is_caption(i[4]) for i in line)
+            and not all(_is_caption(i[4]) for i in nxt)
+            and all(abs(a[2] - b[2]) < tolerance for a, b in zip(line, nxt))
+        ):
+            out.extend([a, b] for a, b in zip(line, nxt))
+            index += 2
+            continue
+        out.append(line)
+        index += 1
+    return out
+
+
+def _split_colon_columns(lines: list[Line]) -> list[Line]:
+    """Unfold side-by-side blocks headed by captions ending with ':' (e.g. two signature columns)."""
+    out: list[Line] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if len(line) >= 2 and all(i[4].strip().endswith(":") and _is_caption(i[4]) for i in line):
+            starts = [i[2] for i in line]
+            height = _height(line)
+            columns: list[list[Line]] = [[[item]] for item in line]
+            bottom = max(i[1] for i in line)
+            index += 1
+            while index < len(lines):
+                row = lines[index]
+                if min(i[0] for i in row) - bottom > 2.5 * height:
+                    break
+                for item in row:
+                    column = max((c for c, x in enumerate(starts) if item[2] >= x - height), default=0)
+                    columns[column].append([item])
+                bottom = max(i[1] for i in row)
+                index += 1
+            for column in columns:
+                merged: list[Line] = []
+                for piece in column:
+                    if merged and abs(piece[0][0] - merged[-1][-1][0]) < 0.5 * height:
+                        merged[-1].extend(piece)
+                    else:
+                        merged.append(piece)
+                out.extend(merged)
+            continue
+        out.append(line)
+        index += 1
+    return out
+
+
+def boxes_to_text(boxes: list[Any], texts: list[str]) -> str:
+    """Rebuild reading order from OCR boxes: lines, caption rows, column blocks and floating labels."""
+    items = []
+    for box, text in zip(boxes, texts):
+        ys = [p[1] for p in box]
+        xs = [p[0] for p in box]
+        items.append((min(ys), max(ys), min(xs), max(xs), text))
+    lines = _float_labels(_split_colon_columns(_pair_label_rows(_group_lines(items))))
+    return "\n".join(" ".join(i[4] for i in line) for line in lines if line)
 
 
 @lru_cache(maxsize=1)
@@ -157,7 +310,7 @@ def ocr_pages(path: Path, pages: list[int], cfg: dict[str, Any]) -> tuple[dict[i
     texts: dict[int, str] = {}
     todo = []
     for index in pages:
-        cached = folder / f"{digest}-{index}-{engine}-{scale}.txt" if folder else None
+        cached = folder / f"{digest}-{index}-{engine}-{scale}-v{LAYOUT_VERSION}.txt" if folder else None
         if cached and cached.exists():
             texts[index] = cached.read_text(encoding="utf-8")
         else:
@@ -168,5 +321,10 @@ def ocr_pages(path: Path, pages: list[int], cfg: dict[str, Any]) -> tuple[dict[i
             texts[index] = run(image)
             if folder:
                 folder.mkdir(parents=True, exist_ok=True)
-                (folder / f"{digest}-{index}-{engine}-{scale}.txt").write_text(texts[index], encoding="utf-8")
-    return {index: fix_ocr_text(texts[index]) for index in pages}, engine
+                (folder / f"{digest}-{index}-{engine}-{scale}-v{LAYOUT_VERSION}.txt").write_text(texts[index], encoding="utf-8")
+    repaired = {index: fix_ocr_text(texts[index]) for index in pages}
+    if cfg.get("spellcheck", True):
+        from .spell import correct_text
+
+        repaired = {index: correct_text(text, float(cfg.get("spellcheck_min_zipf", 2.0))) for index, text in repaired.items()}
+    return repaired, engine

@@ -32,10 +32,39 @@ def fold(text: str) -> str:
     return "".join(_fold_char(c) for c in text)
 
 
+def fold_pattern(pattern: str) -> str:
+    """Fold a regex pattern; 'ł' also accepts letters OCR commonly reads instead of it (t, f, h, 1, |)."""
+    out = []
+    in_class = False
+    escaped = False
+    for char in pattern:
+        if escaped:
+            out.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            out.append(char)
+            escaped = True
+            continue
+        if in_class:
+            if char == "]":
+                in_class = False
+            if char in "łŁ":
+                out.append("lLtfh1|")
+                continue
+        elif char == "[":
+            in_class = True
+        elif char in "łŁ":
+            out.append("[lLtfh1|]")
+            continue
+        out.append(_fold_char(char))
+    return "".join(out)
+
+
 @lru_cache(maxsize=2048)
 def compile_folded(pattern: str, flags: int) -> re.Pattern[str]:
-    """Compile a folded version of a pattern (cached)."""
-    return re.compile(fold(pattern), flags)
+    """Compile a folded, OCR-tolerant version of a pattern (cached)."""
+    return re.compile(fold_pattern(pattern), flags)
 
 
 class FoldedMatch:
