@@ -25,7 +25,7 @@ from odwolania2json.evaluate import Report, compare  # noqa: E402
 from odwolania2json.llm import LLMClient  # noqa: E402
 from odwolania2json.pdftext import extract_text  # noqa: E402
 
-PAIRS = {"odwolanie.pdf": "odwolanie.json", "pelnomocnictwo.pdf": "pelnomocnictwo.json", "potwierdzenie_przelewu.pdf": "przelew.json"}
+PAIRS = {"odwolanie.pdf": "odwolanie.json", "pelnomocnictwo.pdf": "pelnomocnictwo.json", "potwierdzenie_przelewu.pdf": "przelew.json", "przelew.pdf": "przelew.json"}
 
 
 def run_model(model: str, url: str, cases: list[Path], settings, api_key: str = "") -> dict:

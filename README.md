@@ -11,6 +11,7 @@ Aplikacja przyjmuje PDF, **rozpoznaje rodzaj dokumentu** (odwołanie, pełnomocn
 | Sprzęt | CPU, bez GPU (OCR na ONNX Runtime / Tesseract) |
 | LLM | opcjonalny, otwarty model przez API zgodne z OpenAI |
 | Wynik na zbiorze treningowym | **F1 = 1.000** (180 dokumentów, 2032 pola) |
+| Wynik na prawdziwych skanach UZP | **F1 = 0.994** (30 skanów z `dane/skany`) |
 
 ## Jak to działa
 
@@ -155,7 +156,7 @@ Wystarczy nowy plik `config/document_types/<typ>.yaml`. Przykład i opis wszystk
 
 ## LLM (opcjonalnie)
 
-Wersja zgłoszona do oceny działa **bez LLM**: reguły osiągają F1 1.000 na zbiorze UZP, nie potrzebują sieci, GPU ani klucza API i nie generują kosztów. LLM jest **opcjonalny i domyślnie wyłączony**; służy do funkcji dodatkowych (tryb dokładny, streszczenia, asystent RAG). Włącza się go w interfejsie (*Ustawienia*: przełącznik, adres, model, klucz i przycisk „Testuj połączenie”), dla pojedynczego dokumentu przyciskiem *Uzupełnij przez LLM*, w CLI flagą `--llm` albo zmiennymi środowiskowymi (wzór w `.env.example`):
+Wersja zgłoszona do oceny działa **bez LLM**: reguły osiągają F1 1.000 na zbiorze treningowym UZP i 0.994 na skanach UZP, nie potrzebują sieci, GPU ani klucza API i nie generują kosztów. Według punktacji UZP rozwiązanie bez LLM dostaje maksimum punktów za model; opcjonalny Bielik-4.5B mieści się w progu „≤ 8B = 20 pkt”, a OCR działa lokalnie, więc nie wchodzi do średniej parametrów. LLM jest **opcjonalny i domyślnie wyłączony**; służy do funkcji dodatkowych (tryb dokładny, streszczenia, asystent RAG). Włącza się go w interfejsie (*Ustawienia*: przełącznik, adres, model, klucz i przycisk „Testuj połączenie”), dla pojedynczego dokumentu przyciskiem *Uzupełnij przez LLM*, w CLI flagą `--llm` albo zmiennymi środowiskowymi (wzór w `.env.example`):
 
 ```bash
 O2J_LLM_ENABLED=true
@@ -172,12 +173,17 @@ Model uzupełnia tylko pola wskazane w sekcji `llm.fields` danego typu, które r
 python -m odwolania2json eval <katalog dane/ z repozytorium UZP>
 ```
 
-| Zbiór | F1 |
+| Zbiór | Wynik |
 |---|---|
-| 60 zestawów treningowych UZP (180 dokumentów) | 1.000 |
-| 150 syntetycznych spraw z haczykami (`tools/generate_testset.py`) | 1.000 |
-| 12 dokumentów spoza puli UZP + 1032 orzeczenia KIO + 5 innych pism | 100% odrzuconych |
-| skany UZP (`dane/skany`) i symulowane skany (`tools/simulate_scans.py`) | ok. 0.96–0.98 |
+| 60 zestawów treningowych UZP (180 dokumentów, 2032 pola) | F1 **1.000** |
+| 30 prawdziwych skanów UZP (`dane/skany`: odwołania, pełnomocnictwa, potwierdzenia przelewu) | F1 **0.994** (306 trafień, 3 błędne, 1 brak) |
+| 150 nowych syntetycznych spraw z haczykami (`tools/generate_testset.py --seed 4242`), tryb ścisły `--strict` | F1 **1.000** |
+| 9 prawdziwych odwołań z internetu, wartości sprawdzone ręcznie (`tools/real_world_test.py`) | 99/99 ([raport](docs/testy-na-danych-rzeczywistych.md)) |
+| dokumenty spoza puli: 12 negatywnych UZP, 1032 orzeczenia KIO, 28 innych pism z internetu | 100% odrzuconych (pusty JSON `{}`) |
+| symulowane skany, poziom średni: 150 DPI, obrót do 1,5°, szum, JPEG 55 (`tools/simulate_scans.py`) | F1 0.971 |
+| symulowane skany, poziom trudny: 120 DPI, obrót do 3°, wyblakły toner, JPEG 30 | F1 0.860 |
+
+Skany przechodzą przez OCR na CPU: RapidOCR z modelem PP-OCRv5 dla alfabetu łacińskiego, a strona, na której mniej niż 80% słów to polskie słowa ze słownika, jest czytana ponownie modelem PP-OCRv6 (wielojęzyczny, z polskim) i wygrywa lepsza wersja (`ocr.rapidocr_model: auto` w `settings.yaml`). Do tego prostowanie strony, odtwarzanie układu kolumn i etykiet, poprawki typowych pomyłek OCR (np. „q” zamiast „ą” na końcu słowa, „o” zamiast zera w dacie, brakujący cudzysłów otwierający, nazwa miesiąca z jedną złą literą) i słownikowa korekta polskich słów. Najsłabszy jest poziom „trudny”: przy 120 DPI i mocnej kompresji część drobnego, bladego druku jest nieczytelna także dla człowieka.
 
 Same modele LLM bez reguł (`tools/eval_llm.py`, 16 spraw): Bielik-4.5B F1 0.78, Qwen3-1.7B 0.64, Qwen3-0.6B 0.53, Bielik-1.5B 0.47, Qwen2.5-1.5B 0.37 (szczegóły i opis wykorzystanego LLM: [docs/llm.md](docs/llm.md)). Dlatego LLM służy tylko do weryfikacji i funkcji dodatkowych, a wynik JSON pochodzi z reguł.
 
@@ -188,6 +194,16 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 python -m pyflakes odwolania2json tools packaging tests
 ```
+
+Narzędzia do własnych testów jakości (`tools/`):
+
+| Skrypt | Do czego |
+|---|---|
+| `generate_testset.py` | syntetyczne sprawy z plikami wzorcowymi i trudnymi przypadkami (konsorcja, wielu zamawiających, odmiana nazwisk, różne formaty dat i kwot) oraz dokumenty-pułapki spoza puli |
+| `simulate_scans.py` | zamiana spraw z plikami wzorcowymi w skany o trzech poziomach trudności, do oceny OCR przez `eval` |
+| `real_world_test.py` | pobranie publicznych odwołań i dokumentów-pułapek z internetu (z poszanowaniem robots.txt), przetworzenie przez CLI i API, porównanie z wartościami sprawdzonymi ręcznie |
+| `scrape_corpus.py` | pobieranie orzeczeń KIO i innych pism do testów odrzucania |
+| `eval_llm.py` | porównanie samych modeli LLM (bez reguł) |
 
 Workflowy GitHub Actions:
 - `checks`: testy i test wsadowy przy każdym pushu;

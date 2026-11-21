@@ -21,5 +21,6 @@ ocr:
   min_chars_per_page: 40
   max_pages: 4
   scale: 2.0
+  rapidocr_model: auto   # auto: PP-OCRv5 Latin, garbled pages again with PP-OCRv6; v5 or v6 forces one model
   spellcheck: true
   spellcheck_min_zipf: 2.0
