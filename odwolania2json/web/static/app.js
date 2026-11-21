@@ -561,7 +561,7 @@ function applyLlmState() {
     b.title = enabled ? "" : "Włącz model językowy w Ustawieniach";
   });
   $("#assistant-off").classList.toggle("hidden", enabled);
-  $("#ask-btn").disabled = !enabled;
+  $("#ask-btn").textContent = enabled ? "Zapytaj" : "Szukaj";
   document.querySelectorAll("#mode-switch button").forEach((b) => {
     const on = b.dataset.mode === (mode || "fast");
     b.classList.toggle("active", on);
@@ -646,6 +646,27 @@ async function showSummary() {
   }
 }
 
+/** Mark query words (by their stems) inside a snippet. */
+function markTerms(text, terms) {
+  const fold = (w) => w.normalize("NFKD").replace(/ł/g, "l").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return esc(text).replace(/[\p{L}\d]+/gu, (w) => (w.length >= 3 && terms.some((t) => fold(w).startsWith(t)) ? `<mark>${w}</mark>` : w));
+}
+
+/** Show the best matching fragments without a language model. */
+async function searchDocuments(question, box) {
+  try {
+    const { hits } = await send("/api/search", "POST", { question });
+    box.querySelector(".answer-a").innerHTML = hits.length
+      ? `<span class="muted">Najtrafniejsze fragmenty (${hits.length}) · wyszukiwanie lokalne bez modelu</span>`
+      : "Nie znalazłem fragmentów pasujących do zapytania.";
+    box.insertAdjacentHTML("beforeend", `<div class="answer-sources">${hits.map((h, i) => `
+      <button class="source" data-doc="${h.doc_id}" data-start="${h.start}" data-end="${h.end}">
+        <span class="source-n">${i + 1}</span><span><span class="source-file">${esc(h.filename)}</span><span class="source-snip">${markTerms(h.snippet, h.terms)}</span></span></button>`).join("")}</div>`);
+  } catch (e) {
+    box.querySelector(".answer-a").textContent = `Błąd: ${e.message}`;
+  }
+}
+
 /** Ask a question about all uploaded documents (retrieval-augmented). */
 async function askQuestion(question) {
   question = question.trim();
@@ -656,6 +677,7 @@ async function askQuestion(question) {
   box.innerHTML = `<div class="answer-q">${ICON_SPARK}${esc(question)}</div><div class="answer-a"><span class="spinner" style="display:inline-block"></span></div>`;
   $("#answers").prepend(box);
   $("#ask-input").value = "";
+  if (!state.llm.enabled) return searchDocuments(question, box);
   try {
     const r = await send("/api/ask", "POST", { question });
     box.querySelector(".answer-a").textContent = r.answer || "Brak odpowiedzi.";

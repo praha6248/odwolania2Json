@@ -335,6 +335,38 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"LLM: {exc}") from exc
 
+    @app.post("/api/search")
+    def search_documents(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Find the best matching fragments of the uploaded documents without a language model (BM25)."""
+        from ..assistant import search
+
+        query = str(body.get("question") or "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="Wpisz pytanie lub frazę.")
+        documents = [i["result"] for i in store.items.values() if "result" in i]
+        return {"hits": search(query, documents)}
+
+    def processed() -> list[dict[str, Any]]:
+        """Processed documents in upload order."""
+        return [i["result"] for i in store.items.values() if "result" in i]
+
+    @app.get("/api/export.xlsx")
+    def export_xlsx() -> Response:
+        """Excel workbook with a summary, one sheet per type and the formal checks."""
+        from ..export import to_xlsx
+
+        docs = processed()
+        labels = {t.name: t.label for t in state["settings"].document_types}
+        data = to_xlsx(docs, group_cases(docs, state["settings"].formal_checks), labels)
+        return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="odwolania2json.xlsx"'})
+
+    @app.get("/api/export.csv")
+    def export_csv() -> Response:
+        """One CSV row per document with every output field."""
+        from ..export import to_csv
+
+        return Response(to_csv(processed()), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="odwolania2json.csv"'})
+
     @app.get("/api/cases")
     def cases() -> list[dict[str, Any]]:
         """Group uploaded documents into cases by procurement reference and check party consistency."""

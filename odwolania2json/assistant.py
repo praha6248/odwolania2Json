@@ -104,6 +104,32 @@ def build_index(documents: list[dict[str, Any]]) -> BM25:
     return BM25(chunks)
 
 
+def search(question: str, documents: list[dict[str, Any]], k: int = 8, width: int = 320) -> list[dict[str, Any]]:
+    """Find the fragments that best match a query without a language model, centred on the first matching word."""
+    terms = set(tokens(question))
+    out = []
+    for score, chunk in build_index(documents).search(question, k):
+        found = [m for m in re.finditer(r"\w+", chunk.text) if stem(fold(m.group(0)).lower()) in terms]
+        first = max((m.start() for m in found), key=lambda p: len({stem(fold(x.group(0)).lower()) for x in found if p <= x.start() < p + width * 2 // 3}), default=0)
+        left = max(0, first - width // 3)
+        if left or chunk.start:
+            space = chunk.text.find(" ", left, first) if first > left else -1
+            left = space + 1 if space >= 0 else left
+        right = min(len(chunk.text), left + width)
+        space = chunk.text.rfind(" ", left + width // 2, right)
+        right = space if right < len(chunk.text) and space > 0 else right
+        out.append({
+            "doc_id": chunk.doc_id,
+            "filename": chunk.filename,
+            "start": chunk.start + left,
+            "end": chunk.start + right,
+            "score": round(score, 2),
+            "snippet": ("…" if left or chunk.start else "") + chunk.text[left:right].strip() + ("…" if right < len(chunk.text) else ""),
+            "terms": sorted(terms),
+        })
+    return out
+
+
 def ask(client: LLMClient, question: str, documents: list[dict[str, Any]], k: int = 6) -> dict[str, Any]:
     """Answer a question from the most relevant fragments of the documents, citing them by number."""
     hits = build_index(documents).search(question, k)
