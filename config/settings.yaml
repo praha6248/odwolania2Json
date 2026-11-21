@@ -1,5 +1,8 @@
 min_classification_score: 5
 
+plugins:
+  - odwolania2json.extractors
+
 llm:
   enabled: false
   base_url: http://localhost:11434/v1

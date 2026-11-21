@@ -33,3 +33,6 @@ fields:
 template:
   mocodawca: $mocodawca
   pelnomocnicy: $pelnomocnicy
+
+llm:
+  fields: [mocodawca, pelnomocnicy]
