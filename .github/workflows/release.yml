@@ -26,7 +26,12 @@ jobs:
         shell: bash
         run: |
           pip install -r requirements.txt pyinstaller
-          if [ "$RUNNER_OS" = "Windows" ]; then pip install pywebview; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then pip install pywebview || echo "pywebview unavailable, the app will open in the browser"; fi
+      - name: Ensure Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
       - name: Prefetch OCR models into the package
         run: python -c "from odwolania2json.ocr import _rapidocr_engine; _rapidocr_engine()"
       - name: Build
@@ -76,3 +81,11 @@ jobs:
           docker build -t "$image:$version" -t "$image:latest" .
           docker push "$image:$version"
           docker push "$image:latest"
+
+  pages:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
