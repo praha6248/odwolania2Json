@@ -71,7 +71,13 @@ class Processor:
         enabled = self.settings.llm.get("enabled", False) if use_llm is None else use_llm
         self.llm = LLMClient(self.settings.llm) if enabled else None
 
-    def process_text(self, text: str, path: Path, forced_type: str | None = None) -> DocumentResult:
+    def llm_for(self, use_llm: bool | None) -> LLMClient | None:
+        """Return the LLM client to use: the configured one, or one forced on/off for a single call."""
+        if use_llm is None:
+            return self.llm
+        return (self.llm or LLMClient(self.settings.llm)) if use_llm else None
+
+    def process_text(self, text: str, path: Path, forced_type: str | None = None, use_llm: bool | None = None) -> DocumentResult:
         """Classify and extract structured data from already extracted text."""
         started = time.perf_counter()
         cls = classify(self.settings, text, path.name)
@@ -81,12 +87,13 @@ class Processor:
         if doc_type is None:
             return DocumentResult(path, None, cls, None, text=text, seconds=time.perf_counter() - started)
         data, ctx = extract(text, doc_type)
-        if self.llm is not None:
-            data = self.llm.refine(doc_type, text, data, ctx)
+        llm = self.llm_for(use_llm)
+        if llm is not None:
+            data = llm.refine(doc_type, text, data, ctx)
         fields = [r.to_dict() for r in ctx.results.values()]
         return DocumentResult(path, doc_type.name, cls, data, fields, text, time.perf_counter() - started)
 
-    def process_pdf(self, path: str | Path, forced_type: str | None = None) -> DocumentResult:
+    def process_pdf(self, path: str | Path, forced_type: str | None = None, use_llm: bool | None = None) -> DocumentResult:
         """Process a single PDF file, never raising on malformed input."""
         path = Path(path)
         started = time.perf_counter()
@@ -95,7 +102,7 @@ class Processor:
         except Exception as exc:
             log.exception("Cannot read %s", path)
             return DocumentResult(path, None, Classification(None, 0.0), None, error=str(exc))
-        result = self.process_text(doc.text, path, forced_type)
+        result = self.process_text(doc.text, path, forced_type, use_llm)
         result.seconds = time.perf_counter() - started
         if doc.ocr_pages:
             result.ocr = {"engine": doc.ocr_engine, "pages": [i + 1 for i in doc.ocr_pages]}
