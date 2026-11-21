@@ -237,3 +237,82 @@ def place(value: str) -> str | None:
         if variant in lexicon:
             return lexicon[variant]
     return text
+
+
+OBLIQUE_TITLE = re.compile(r"(?i)\b(?:radcę|radcy|radczynię|radczyni|adwokata|adwokatowi|adwokatkę|adwokatce|mecenasa|mecenasowi|pełnomocnika|pełnomocnikowi)\b")
+
+
+@lru_cache(maxsize=1)
+def _morfeusz():
+    """Morfeusz2 analyser if installed."""
+    try:
+        import morfeusz2
+
+        return morfeusz2.Morfeusz(generate=False)
+    except Exception:
+        return None
+
+
+SUFFIX_RULES = {
+    "m1": [(r"([sc]k|dzk)iego$", r"\1i"), (r"([sc]k|dzk)iemu$", r"\1i"), (r"(?<=[bcdfghjklłmnprstwzż])a$", ""), (r"(?<=[bcdfghjklłmnprstwzż])owi$", "")],
+    "f": [(r"([sc]k|dzk)iej$", r"\1a"), (r"owej$", "owa")],
+}
+OBLIQUE_CASE = re.compile(r"(?:^|[:.])(?:gen|acc|dat|inst|loc)(?:[:.]|$)")
+
+
+def _readings(token: str) -> list[tuple[str, str, str]]:
+    """Noun readings of a token as (lemma, case field, gender field)."""
+    analyser = _morfeusz()
+    if analyser is None:
+        return []
+    out = []
+    for item in analyser.analyse(token):
+        tag = item[2][2].split(":")
+        if tag[0] == "subst" and len(tag) >= 4:
+            out.append((item[2][1].split(":")[0], tag[2], tag[3]))
+    return out
+
+
+def _convert(token: str, gender: str) -> tuple[str, bool]:
+    """Nominative of a capitalized token for a gender; the flag says whether an oblique reading was used."""
+    if not token[:1].isupper():
+        return token, False
+    for lemma, case, genders in _readings(token):
+        if lemma[:1].isupper() and gender in genders.split(".") and OBLIQUE_CASE.search(case):
+            return lemma, True
+    return token, False
+
+
+@normalizer("nominative")
+def nominative(value: str) -> str | None:
+    """Convert a person name written in an oblique case (e.g. 'Jana Kowalskiego') to nominative with Morfeusz2."""
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    if not text or _morfeusz() is None:
+        return text or None
+    best: tuple[int, str] = (0, text)
+    best_gender = None
+    for gender in ("m1", "f"):
+        converted = 0
+        words = []
+        for word in text.split(" "):
+            pieces = []
+            for piece in word.split("-"):
+                new, used = _convert(piece, gender)
+                converted += used
+                pieces.append(new)
+            words.append("-".join(pieces))
+        if converted > best[0]:
+            best = (converted, " ".join(words))
+            best_gender = gender
+    if best_gender is None:
+        return best[1]
+    words = best[1].split(" ")
+    original = text.split(" ")
+    rules = SUFFIX_RULES[best_gender]
+    for i, (new, old) in enumerate(zip(words, original)):
+        if new == old and new[:1].isupper() and not _readings(new):
+            for pattern, replacement in rules:
+                if re.search(pattern, new):
+                    words[i] = re.sub(pattern, replacement, new)
+                    break
+    return " ".join(words)
