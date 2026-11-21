@@ -27,6 +27,8 @@ OCR_FIXES = [
     (r"\bpe[lłi]nomocni", "pełnomocni"),
     (r"(?<=[a-ząćęłńóśźż]{3})q\b", "ą"),
     (r"(?<=\w)@\.(?=\w)", "@"),
+    (r"(\bpn\.\s*)(?=[A-ZĄĆĘŁŃÓŚŹŻ][^„“\"”\n]{0,160}(?:\n[^„“\"”\n]{0,160}){0,3}[\"”])", r"\1„"),
+    (r"(\(dalej(?:\s+łącznie)?\s*:\s*)(?=[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźż]*[\"”])", r"\1„"),
     (r"\b(przez|Przez)\.\s*(?=[A-Za-ząćęłńóśźżĄĆĘŁŃÓŚŹŻ])", r"\1 "),
     (r"\bODWO[LŁ]ANIE\b", "ODWOŁANIE"),
     (r"\bP[EĘ][LŁ]NOMOCNICTWO\b", "PEŁNOMOCNICTWO"),
@@ -244,26 +246,48 @@ def boxes_to_text(boxes: list[Any], texts: list[str]) -> str:
     return "\n".join(" ".join(i[4] for i in line) for line in lines if line)
 
 
-@lru_cache(maxsize=1)
-def _rapidocr_engine() -> Any:
-    """Create (once) a RapidOCR engine with the Latin recognition model covering Polish diacritics."""
+AUTO_THRESHOLD = 0.8
+AUTO_MARGIN = 0.05
+
+RAPIDOCR_MODELS = {
+    "auto": "PP-OCRv5 Latin first; a page whose text has under 80% known Polish words is read again with PP-OCRv6",
+    "v6": "PP-OCRv6 small: multilingual detection and recognition with Polish, more robust on poor scans",
+    "v5": "PP-OCRv5 mobile Latin recognition (the previous default)",
+}
+
+
+@lru_cache(maxsize=2)
+def _rapidocr_engine(model: str = "v6") -> Any:
+    """Create (once per model) a RapidOCR engine whose recognition covers Polish diacritics."""
     from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
-    return RapidOCR(
-        params={
-            "Global.log_level": "warning",
-            "Det.thresh": 0.2,
-            "Det.box_thresh": 0.3,
-            "Rec.lang_type": LangRec.LATIN,
-            "Rec.ocr_version": OCRVersion.PPOCRV5,
-            "Rec.model_type": ModelType.MOBILE,
-        }
-    )
+    params: dict[str, Any] = {"Global.log_level": "warning", "Det.thresh": 0.2, "Det.box_thresh": 0.3}
+    if model == "v5":
+        params.update({"Rec.lang_type": LangRec.LATIN, "Rec.ocr_version": OCRVersion.PPOCRV5, "Rec.model_type": ModelType.MOBILE})
+    else:
+        params.update({"Rec.lang_type": "pl", "Rec.ocr_version": OCRVersion.PPOCRV6, "Rec.model_type": ModelType.SMALL})
+    return RapidOCR(params=params)
 
 
-def rapidocr_page(image: Any) -> str:
-    """OCR a page image with RapidOCR."""
-    result = _rapidocr_engine()(image)
+def text_quality(text: str) -> float:
+    """Share of words (3+ letters) found in the Polish lexicon; low values mean garbled OCR output."""
+    from .spell import WORD, is_word
+
+    words = WORD.findall(fix_ocr_text(text))
+    return sum(is_word(w) for w in words) / len(words) if words else 0.0
+
+
+def rapidocr_page(image: Any, model: str = "auto") -> str:
+    """OCR a page image with RapidOCR; in auto mode a garbled page is read again with the PP-OCRv6 model."""
+    if model == "auto":
+        text = rapidocr_page(image, "v5")
+        quality = text_quality(text)
+        if quality < AUTO_THRESHOLD:
+            retry = rapidocr_page(image, "v6")
+            if text_quality(retry) > quality + AUTO_MARGIN:
+                return retry
+        return text
+    result = _rapidocr_engine(model)(image)
     if result.boxes is None:
         return ""
     return boxes_to_text(list(result.boxes), list(result.txts))
@@ -330,23 +354,25 @@ def ocr_pages(path: Path, pages: list[int], cfg: dict[str, Any]) -> tuple[dict[i
         log.warning("No OCR engine available for %s", path)
         return {}, None
     scale = float(cfg.get("scale", 2.0))
+    model = str(cfg.get("rapidocr_model", "auto")) if engine == "rapidocr" else ""
+    variant = f"{engine}-{model}" if model and model != "v5" else engine
     digest = hashlib.sha1(path.read_bytes()).hexdigest()
     folder = cache_dir(cfg)
     texts: dict[int, str] = {}
     todo = []
     for index in pages:
-        cached = folder / f"{digest}-{index}-{engine}-{scale}-v{LAYOUT_VERSION}.txt" if folder else None
+        cached = folder / f"{digest}-{index}-{variant}-{scale}-v{LAYOUT_VERSION}.txt" if folder else None
         if cached and cached.exists():
             texts[index] = cached.read_text(encoding="utf-8")
         else:
             todo.append(index)
     if todo:
-        run = ENGINES[engine][1]
+        run = (lambda image: rapidocr_page(image, model)) if engine == "rapidocr" else ENGINES[engine][1]
         for index, image in zip(todo, render_pages(path, scale, todo)):
             texts[index] = run(image)
             if folder:
                 folder.mkdir(parents=True, exist_ok=True)
-                (folder / f"{digest}-{index}-{engine}-{scale}-v{LAYOUT_VERSION}.txt").write_text(texts[index], encoding="utf-8")
+                (folder / f"{digest}-{index}-{variant}-{scale}-v{LAYOUT_VERSION}.txt").write_text(texts[index], encoding="utf-8")
     repaired = {index: fix_ocr_text(texts[index]) for index in pages}
     if cfg.get("spellcheck", True):
         from .spell import correct_text

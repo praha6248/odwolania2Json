@@ -28,3 +28,18 @@ def test_signers_in_one_line_and_similar_names():
     assert signature_names("Dorota Topolska - Członek Zarządu Halina Baran - Prezes Zarządu") == ["Dorota Topolska", "Halina Baran"]
     assert similar_name("Szymon Jabłoń", ["Szymon Jabbon"])
     assert not similar_name("Dorota Szulc", ["Monika Kaczmarek"])
+
+
+def test_missing_opening_quote_is_restored():
+    """PP-OCRv6 drops the low opening quote; it is put back where a title or a defined term ends with a quote."""
+    assert fix_ocr_text('pn. Odbiór i\nzagospodarowanie odpadów", nr') == 'pn. „Odbiór i\nzagospodarowanie odpadów", nr'
+    assert fix_ocr_text('(dalej:\nMocodawca"), niniejszym') == '(dalej:\n„Mocodawca"), niniejszym'
+    assert fix_ocr_text("pn. „Dostawa sprzętu”, nr") == "pn. „Dostawa sprzętu”, nr"
+
+
+def test_text_quality_separates_clean_and_garbled_ocr():
+    """Readable Polish scores high and garbled OCR output scores below the re-read threshold."""
+    from odwolania2json.ocr import AUTO_THRESHOLD, text_quality
+
+    assert text_quality("Potwierdzenie realizacji polecenia przelewu, data operacji, rachunek odbiorcy") > AUTO_THRESHOLD
+    assert text_quality("Rachamesk slesenisdavty Dotae siputrerj Naner sefenncyuy Plaosikc Zaneedel") < AUTO_THRESHOLD
