@@ -494,3 +494,12 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
   .profile-text small, .profile-text b { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .search { min-width: 0; width: 100%; }
 }
+
+.kpi-icon, .kpi-icon.accent { width: auto; height: auto; background: none; border: 0; border-radius: 0; color: var(--muted); }
+.kpi-icon.accent { color: var(--accent); }
+.kpi-icon svg { width: 22px; height: 22px; }
+.kpi-row { gap: 10px; }
+.drop-art, .dropzone.compact .drop-art { width: auto; height: auto; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.drop-art svg { width: 34px; height: 34px; }
+.dropzone.compact .drop-art svg { width: 26px; height: 26px; }
+@media (max-width: 720px) { .kpi-icon { display: grid; } .kpi-icon svg { width: 20px; height: 20px; } }
