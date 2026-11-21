@@ -472,39 +472,46 @@ def account(number: str, rng: random.Random) -> str:
     return rng.choice([f"PL{number}", spaced, f"PL{spaced}", number, f"PL {spaced}"])
 
 
+def as_written(rendered: str) -> str:
+    """Expected account value: the digits, with the PL prefix when the document shows it (UZP rule)."""
+    digits_only = "".join(ch for ch in rendered if ch.isdigit())
+    return f"PL{digits_only}" if rendered.startswith("PL") else digits_only
+
+
 def transfer_lines(case: Case, rng: random.Random) -> tuple[list[str], dict[str, Any]]:
     """Render the bank transfer confirmation in one of five layouts and its expected JSON."""
     payer, payee = case.appellants[0], case.authorities[0]
     d = pl_date(case.transfer_date, rng)
     ref = case.transaction
+    from_text, to_text = account(case.from_account, rng), account(case.to_account, rng)
     layout = rng.choice(["colon", "nextline", "dots", "letter", "columns"])
     bank = rng.choice(["Bank Północny S.A.", "Kredyt Mazowsze", "Bank Spółdzielczy w Opolu", "Nova Bank Polska"])
     if layout == "colon":
-        lines = [f"#{bank} – Potwierdzenie wykonania przelewu", "", f"Nazwa zleceniodawcy: {payer.name}", f"Rachunek zleceniodawcy: {account(case.from_account, rng)}",
-                 f"Nazwa odbiorcy: {payee.name}", f"Rachunek odbiorcy: {account(case.to_account, rng)}", f"Kwota: {money(case.amount, rng)}", f"Data operacji: {d}",
+        lines = [f"#{bank} – Potwierdzenie wykonania przelewu", "", f"Nazwa zleceniodawcy: {payer.name}", f"Rachunek zleceniodawcy: {from_text}",
+                 f"Nazwa odbiorcy: {payee.name}", f"Rachunek odbiorcy: {to_text}", f"Kwota: {money(case.amount, rng)}", f"Data operacji: {d}",
                  f"Tytuł przelewu: {case.transfer_title}"] + ([f"Numer referencyjny: {ref}"] if ref else []) + ["Status: Zrealizowany"]
     elif layout == "nextline":
-        lines = [f"#{bank}", "POTWIERDZENIE WYKONANIA PRZELEWU", "", "Zleceniodawca", payer.name, "Rachunek nadawcy", account(case.from_account, rng), "Odbiorca", payee.name,
-                 "Rachunek odbiorcy", account(case.to_account, rng), "Kwota operacji", money(case.amount, rng), "Data transakcji", d, "Tytuł przelewu", case.transfer_title] + (["Identyfikator operacji", ref] if ref else [])
+        lines = [f"#{bank}", "POTWIERDZENIE WYKONANIA PRZELEWU", "", "Zleceniodawca", payer.name, "Rachunek nadawcy", from_text, "Odbiorca", payee.name,
+                 "Rachunek odbiorcy", to_text, "Kwota operacji", money(case.amount, rng), "Data transakcji", d, "Tytuł przelewu", case.transfer_title] + (["Identyfikator operacji", ref] if ref else [])
     elif layout == "dots":
         lines = [f"#{bank.upper()}", "POTWIERDZENIE REALIZACJI POLECENIA PRZELEWU", "-" * 60, f"KWOTA PRZELEWU ........................ {money(case.amount, rng)}",
-                 f"DATA REALIZACJI ....................... {d}", "RACHUNEK NADAWCY", account(case.from_account, rng), "RACHUNEK ODBIORCY", account(case.to_account, rng), payee.name,
+                 f"DATA REALIZACJI ....................... {d}", "RACHUNEK NADAWCY", from_text, "RACHUNEK ODBIORCY", to_text, payee.name,
                  "TYTUŁ PRZELEWU:", case.transfer_title] + ([f"NR REF. ............................... {ref}"] if ref else []) + ["STATUS .............................. Wykonany"]
     elif layout == "letter":
         amount_text = f"{case.amount:.2f}".replace(".", ",")
         lines = [f"#{bank}", "Centrum Obsługi Klienta", "", payer.name, "", "Dotyczy: potwierdzenie realizacji polecenia przelewu", "",
-                 f"Bank potwierdza, że w dniu {d} z rachunku nr {account(case.from_account, rng)}, prowadzonego dla {payer.name}, wykonano przelew krajowy w kwocie {amount_text} na rachunek nr {account(case.to_account, rng)}, prowadzony dla {payee.name}.",
+                 f"Bank potwierdza, że w dniu {d} z rachunku nr {from_text}, prowadzonego dla {payer.name}, wykonano przelew krajowy w kwocie {amount_text} na rachunek nr {to_text}, prowadzony dla {payee.name}.",
                  f"Tytuł przelewu: „{case.transfer_title}”."] + ([f"Numer referencyjny operacji: {ref}."] if ref else []) + ["", "Z poważaniem", "Dział Rozliczeń"]
     else:
-        lines = [f"#{bank}", "Potwierdzenie transakcji", "", f"Płatnik: {payer.name}", f"Rachunek obciążany: {account(case.from_account, rng)}", f"Beneficjent: {payee.name}",
-                 f"Rachunek uznawany: {account(case.to_account, rng)}", f"Kwota operacji: {money(case.amount, rng)}", f"Data wykonania: {d}", "Opis", case.transfer_title] + ([f"Nr ref. {ref}"] if ref else [])
+        lines = [f"#{bank}", "Potwierdzenie transakcji", "", f"Płatnik: {payer.name}", f"Rachunek obciążany: {from_text}", f"Beneficjent: {payee.name}",
+                 f"Rachunek uznawany: {to_text}", f"Kwota operacji: {money(case.amount, rng)}", f"Data wykonania: {d}", "Opis", case.transfer_title] + ([f"Nr ref. {ref}"] if ref else [])
     expected = {"przelew_bankowy": {
         "data_operacji": case.transfer_date.isoformat(),
         "kwota": case.amount,
-        "na_rachunek": case.to_account,
+        "na_rachunek": as_written(to_text),
         "numer_transakcji": ref,
         "tytul": case.transfer_title,
-        "z_rachunku": case.from_account,
+        "z_rachunku": as_written(from_text),
     }}
     return lines, expected
 

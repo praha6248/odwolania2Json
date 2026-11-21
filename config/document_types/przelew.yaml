@@ -81,7 +81,7 @@ fields:
         pattern: 'w kwocie\s+([\d][\d \.,]*\d)'
 
   z_rachunku:
-    description: Numer rachunku nadawcy, same cyfry bez PL i spacji (26 cyfr).
+    description: Numer rachunku nadawcy tak jak w dokumencie, bez spacji (26 cyfr, z prefiksem PL, jeśli dokument go ma).
     normalize: [account]
     extract:
       - type: label
@@ -94,7 +94,7 @@ fields:
         occurrence: 0
 
   na_rachunek:
-    description: Numer rachunku odbiorcy, same cyfry bez PL i spacji (26 cyfr).
+    description: Numer rachunku odbiorcy tak jak w dokumencie, bez spacji (26 cyfr, z prefiksem PL, jeśli dokument go ma).
     normalize: [account]
     extract:
       - type: label

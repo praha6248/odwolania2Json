@@ -76,7 +76,8 @@ def test_identifier_normalizers():
     """TED, BZP and account numbers are brought to the reference format."""
     assert normalizers.ted("2026/S 142-999327") == "999327-2026"
     assert normalizers.bzp("2026/BZP 00999827") == "2026/BZP00999827"
-    assert normalizers.account("PL07 1044 6255 1544 8206 2521 6547") == "07104462551544820625216547"
+    assert normalizers.account("PL07 1044 6255 1544 8206 2521 6547") == "PL07104462551544820625216547"
+    assert normalizers.account("07 1044 6255 1544 8206 2521 6547") == "07104462551544820625216547"
 
 
 def test_fuzzy_regex_returns_original_text():
