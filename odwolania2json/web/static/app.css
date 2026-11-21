@@ -503,3 +503,13 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
 .drop-art svg { width: 34px; height: 34px; }
 .dropzone.compact .drop-art svg { width: 26px; height: 26px; }
 @media (max-width: 720px) { .kpi-icon { display: grid; } .kpi-icon svg { width: 20px; height: 20px; } }
+
+.kpi-icon svg { width: 30px; height: 30px; stroke-width: 1.7; }
+.kpi-icon.blue { color: var(--blue); }
+.kpi-icon.green { color: var(--green); }
+.kpi-icon.violet { color: var(--violet); }
+.kpi-row { gap: 12px; }
+.drop-art { color: var(--accent); }
+.drop-art svg { width: 44px; height: 44px; stroke-width: 1.6; }
+.dropzone.compact .drop-art svg { width: 34px; height: 34px; }
+@media (max-width: 720px) { .kpi-icon svg { width: 24px; height: 24px; } }
