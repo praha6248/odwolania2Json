@@ -1,0 +1,174 @@
+name: odwolanie
+label: Odwołanie do KIO
+description: Appeal to the National Appeal Chamber (KIO) against an act or omission of the contracting authority.
+
+classify:
+  head_chars: 3000
+  head_keywords:
+    odwołanie: 4
+    odwołujący: 3
+    krajowej izby odwoławczej: 2
+    krajowa izba odwoławcza: 2
+    zamawiający: 1
+  keywords:
+    zarzut: 2
+    wnoszę o: 1
+    prawo zamówień publicznych: 1
+  filename_hints:
+    odwolanie: 4
+    odwołanie: 4
+
+sections:
+  header:
+    start: '\A'
+    end: ['Działając\s+w\s+imieniu', 'wnoszę\s+(?:o|odwołanie)']
+  dotyczy:
+    start: '^\s*dotyczy\s*:?'
+    end: ['^\s*O\s*D\s*W\s*O\s*Ł\s*A\s*N\s*I\s*E\s*$', '^\s*Wartość\s+zamówienia', '^\s*Wpis\s+od', '^\s*Działając', '^\s*Prezes\s+Krajowej', '^\s*Krajowa\s+Izba', '^[A-ZĄĆĘŁŃÓŚŹŻ][^\n,]{1,40},\s+(?:dnia\s+)?\d']
+  first_act_item:
+    start: 'polegając\w*\s+na\s*:?\s*1\)'
+    end: ['\s2\)', ';\s*\n']
+    max_chars: 600
+  first_act_sentence:
+    start: 'Zamawiający\s+w\s+dniu'
+    include_start: true
+    end: ['\n\s*Zarzut', '\.\s*\n', '\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])']
+    max_chars: 400
+  first_charge:
+    start: 'Zarzut\s+nr\s*1'
+    end: ['Zarzut\s+nr\s*2']
+    max_chars: 1500
+
+fields:
+  data:
+    description: Date from the place/date line in the document header (ISO).
+    normalize: [date_iso]
+    extract:
+      - type: regex
+        scope: header
+        pattern: '^\s*[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?,?\s+(?:dnia\s+)?(\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4})(?:\s*r(?:oku|\.)?)?\s*$'
+        ignore_case: false
+
+  miejscowosc:
+    description: Place from the place/date line in the document header.
+    normalize: [strip]
+    extract:
+      - type: regex
+        scope: header
+        pattern: '^\s*([A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?),?\s+(?:dnia\s+)?\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}(?:\s*r(?:oku|\.)?)?\s*$'
+        ignore_case: false
+
+  czynnosc_dzien:
+    description: Date of the challenged act from the first charge (ISO).
+    extract:
+      - type: dated_event
+        scope: [first_act_item, first_act_sentence]
+        pattern: '((?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4}))'
+
+  czynnosc_powod_id:
+    description: Reason id 1-12 of the challenged act, based only on the first charge.
+    extract:
+      - type: keyword_map
+        scope: [first_act_item, first_act_sentence]
+        options: &reasons
+          - {value: 7, priority: 3, keywords: ['zaniecha\w*\s+odrzucenia', 'nie\s+odrzucił']}
+          - {value: 8, priority: 3, keywords: ['zaniecha\w*\s+wykluczenia', 'nie\s+wykluczył']}
+          - {value: 10, priority: 3, keywords: ['zaniecha\w*\s+unieważnienia', 'nie\s+unieważnił']}
+          - {value: 6, priority: 2, keywords: ['odpowiedzi\w*\s+(?:i\s+wyjaśnie\w*\s+)?(?:do|na)', 'wyjaśnie\w*\s+treści\s+(?:SWZ|Specyfikacji)']}
+          - {value: 5, priority: 2, keywords: ['zmodyfikował', 'modyfikacj\w*\s+treści', 'zmian\w*\s+treści\s+(?:SWZ|Specyfikacji)']}
+          - {value: 1, priority: 1, keywords: ['odrzuc\w*\s+(?:oferty|ofert)', 'odrzuceniu']}
+          - {value: 3, priority: 1, keywords: ['wyklucz\w*', 'wykluczeniu']}
+          - {value: 9, priority: 1, keywords: ['unieważni\w*\s+postępowani']}
+          - {value: 2, priority: 1, keywords: ['wyb(?:ór|or\w*)\s+(?:jako\s+najkorzystniejszej\s+)?oferty', 'najkorzystniejsz']}
+          - {value: 4, priority: 1, keywords: ['opublikował\w*\s+Specyfikac', 'ustaleni\w*\s+treści\s+(?:SWZ|Specyfikacji)', 'treści\s+SWZ', 'Specyfikacj\w*\s+Warunków']}
+          - {value: 11, priority: 0, keywords: ['Opis\w*\s+Przedmiotu\s+Zamówienia', 'opisani\w*\s+przedmiotu', '\bOPZ\b']}
+      - type: keyword_map
+        scope: first_charge
+        options: *reasons
+
+  czynnosc_opis:
+    description: Canonical description matching czynnosc_powod_id.
+    extract:
+      - type: map
+        source: czynnosc_powod_id
+        mapping:
+          1: Decyzja o odrzuceniu oferty
+          2: Ogłoszenie wyboru oferty
+          3: Decyzja o wykluczeniu wykonawcy
+          4: Publikacja specyfikacji warunków zamówienia (SWZ)
+          5: Modyfikacja treści SWZ
+          6: Odpowiedzi i wyjaśnienia do SWZ
+          7: Zaniechanie odrzucenia oferty
+          8: Zaniechanie wykluczenia wykonawcy
+          9: Decyzja o unieważnieniu postępowania
+          10: Zaniechanie unieważnienia postępowania
+          11: Opis przedmiotu zamówienia (OPZ)
+          12: Inna czynność zamawiającego
+
+  odwolujacy:
+    description: Appellant or consortium leader, with attorney.
+    default: []
+    extract:
+      - type: appellants
+
+  zamawiajacy:
+    description: Contracting authorities.
+    default: []
+    extract:
+      - type: contracting_authorities
+
+  numer_bzp:
+    description: BZP notice number, format YYYY/BZP######## (no TED numbers).
+    normalize: [bzp]
+    extract:
+      - type: regex
+        scope: [dotyczy, header]
+        pattern: '(\d{4}\s*/\s*BZP\s*[\d ]{6,12}\d(?:\s*/\s*\d{1,2})?)'
+
+  numer_ted:
+    description: TED notice number as NNNNNN-YYYY.
+    normalize: [ted]
+    extract:
+      - type: regex
+        scope: [dotyczy, header]
+        pattern: '(\d{4}\s*/\s*S\s*\d{1,3}\s*[-–]\s*\d{5,7})'
+      - type: regex
+        scope: [dotyczy, header]
+        pattern: '(?:TED|Dzienniku\s+Urzędowym\s+(?:UE|Unii\s+Europejskiej))\s*:?\s*(?:nr\s*|pod\s+numerem\s*)?(\d{5,7}\s*[-–]\s*\d{4})'
+
+  numer_postepowania:
+    description: Reference number of the procurement procedure.
+    normalize: [strip]
+    extract:
+      - type: regex
+        scope: [dotyczy, header]
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|sygn\w*\.?)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+      - type: regex
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|numer\s+postępowania)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+
+  tytul:
+    description: Title of the procurement.
+    normalize: [strip]
+    extract:
+      - type: regex
+        scope: [dotyczy, header]
+        pattern: '(?:pn\.|pod\s+nazwą|nazwa\s+zamówienia\s*:?)\s*[„"“]([^”"]+)[”"]'
+        dotall: true
+      - type: regex
+        pattern: '(?:pn\.|pod\s+nazwą)\s*[„"“]([^”"]+)[”"]'
+        dotall: true
+
+template:
+  OdwolanieKIO:
+    data: $data
+    czynnosc_dzien: $czynnosc_dzien
+    czynnosc_powod_id: $czynnosc_powod_id
+    czynnosc_opis: $czynnosc_opis
+    miejscowosc: $miejscowosc
+  Odwolujacy: $odwolujacy
+  Zamawiajacy: $zamawiajacy
+  ZamowieniePubliczne:
+    numer_bzp: $numer_bzp
+    numer_postepowania: $numer_postepowania
+    numer_ted: $numer_ted
+    tytul: $tytul

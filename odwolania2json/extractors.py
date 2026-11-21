@@ -219,3 +219,102 @@ def extract_dated_event(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Eviden
             start, end = match.span(1)
             return value, Evidence("dated_event", snippet(text, start, end), offset + start, offset + end)
     return None, None
+
+
+EMAIL = r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
+PARTY_STOP = (
+    r"^\s*(?:Odwołując\w*|Zamawiając\w*|dotyczy|Wykonawca\s+wybrany|Przystępując\w*|Uczestni\w*|"
+    r"O\s*D\s*W\s*O\s*Ł\s*A\s*N\s*I\s*E|Prezes\s+Krajowej|Krajowa\s+Izba|Wartość\s+zamówienia|Wpis\s+od|Do\s*:)"
+)
+
+
+def party_block(text: str, label: str, stop: str) -> tuple[str, int] | None:
+    """Return the text block that follows a party label line, up to the next party/section label."""
+    match = re.search(rf"^\s*{label}", text, re.I | re.M)
+    if not match:
+        return None
+    end_match = re.compile(stop, re.I | re.M).search(text, match.end() + 1)
+    end = end_match.start() if end_match else min(len(text), match.end() + 1500)
+    return text[match.end():end], match.end()
+
+
+def parse_entity(block: str) -> dict[str, Any]:
+    """Parse name, identifiers, representative, law firm and e-mail from a party block."""
+    body = re.sub(r"^\s*(?:\([^)]*\)\s*)?:?", "", block, count=1)
+    first = body.lstrip()
+    if re.match(r"(?:Konsorcjum|wykonawcy\s+wspólnie)", first, re.I):
+        first = first.split("\n", 1)[1] if "\n" in first else ""
+    first = re.sub(r"^\s*\d\)\s*[^\n]*:\s*\n", "", first)
+    name = cut_name(first)
+    rep = re.search(rf"reprezentowan\w*\s+przez\s*:?\s*(?:{TITLES}\s*)?({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
+    firm = re.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*tel)", body, re.I | re.S)
+    mail = re.search(EMAIL, body[rep.start():] if rep else "")
+    return {
+        "name": name,
+        **ids_in(body),
+        "rep": person_name(re.sub(r"\s+", " ", rep.group(1))) if rep else None,
+        "firm": entity_name(re.sub(r"\s*\n\s*", " ", firm.group(1))) if firm else None,
+        "mail": mail.group(0) if mail else None,
+    }
+
+
+def split_members(block: str) -> list[tuple[str, str]]:
+    """Split a party block into numbered members, returning (header line, member text) pairs."""
+    items = list(re.finditer(r"^\s*\d\)\s*([^\n]*)\n", block, re.M))
+    if len(items) < 2:
+        return []
+    out = []
+    for index, item in enumerate(items):
+        end = items[index + 1].start() if index + 1 < len(items) else len(block)
+        out.append((item.group(1), block[item.end():end]))
+    return out
+
+
+@extractor("appellants")
+def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | None]:
+    """Extract the appellant (or consortium leader) with its attorney details."""
+    found = party_block(ctx.text, spec.get("label", r"Odwołując\w*"), spec.get("stop", PARTY_STOP))
+    if not found:
+        return None, None
+    block, start = found
+    members = split_members(block)
+    main = block
+    if members:
+        leader = next((m for m in members if re.search(r"lider|pełnomocnik", m[0], re.I)), members[0])
+        main = leader[1]
+    entity = parse_entity(main)
+    shared = parse_entity(block)
+    rep = entity["rep"] or shared["rep"]
+    result = {
+        "krs": entity["krs"],
+        "nazwa": entity["name"],
+        "nip": entity["nip"],
+        "regon": entity["regon"],
+        "przez-pelnomocnika": 1 if rep else 0,
+        "pelnomocnik": {
+            "imie_nazwisko": rep,
+            "nazwa": entity["firm"] or shared["firm"],
+            "mail": entity["mail"] or shared["mail"],
+        },
+    }
+    return [result], Evidence("appellants", snippet(ctx.text, start, start + len(block), 0), start, start + len(block))
+
+
+@extractor("contracting_authorities")
+def extract_contracting_authorities(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | None]:
+    """Extract one or more contracting authorities, marking the one conducting a joint procedure."""
+    found = party_block(ctx.text, spec.get("label", r"Zamawiając\w*"), spec.get("stop", PARTY_STOP))
+    if not found:
+        return None, None
+    block, start = found
+    members = split_members(block)
+    out = []
+    if members:
+        for header, body in members:
+            entity = parse_entity(body)
+            leading = 1 if re.search(r"prowadząc|lider|pełnomocnik\s+zamawiaj", header, re.I) else 0
+            out.append({"krs": entity["krs"], "nazwa": entity["name"], "nip": entity["nip"], "regon": entity["regon"], "prowadzacy_postepowanie": leading})
+    else:
+        entity = parse_entity(block)
+        out.append({"krs": entity["krs"], "nazwa": entity["name"], "nip": entity["nip"], "regon": entity["regon"], "prowadzacy_postepowanie": None})
+    return out, Evidence("contracting_authorities", snippet(ctx.text, start, start + len(block), 0), start, start + len(block))
