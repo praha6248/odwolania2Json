@@ -2,7 +2,21 @@
 
 Nowy typ to jeden plik YAML w `config/document_types/`. Nie trzeba zmieniać kodu ani przebudowywać aplikacji: wystarczy ponowne uruchomienie albo *Przeładuj konfigurację* w interfejsie.
 
-## Przykład: wezwanie do uzupełnienia wpisu
+## Najprościej: kreator w interfejsie
+
+*Typy dokumentów → Nowy typ*:
+
+1. Wybierz przykładowy PDF (albo dodaj go przyciskiem *Dodaj PDF*).
+2. Zaznacz myszką wartość w tekście i kliknij *Dodaj jako pole*. Kreator rozpozna kształt wartości (data, kwota, rachunek, osoba, numer, e-mail, sygnatura, tekst), dobierze normalizację, a podpis przed wartością (w tej samej linii albo linię wyżej) zamieni w etykietę i nazwę pola. Nazwę można zmienić.
+3. Sprawdź frazy rozpoznające typ (podpowiedź: tytuł dokumentu z wagą 5).
+4. Podgląd pokazuje wynik JSON, punktację przykładu, inne wgrane dokumenty spoza puli, które typ również odczyta (z liczbą wypełnionych pól), oraz ostrzega, gdy typ przejąłby dokument z istniejącego typu.
+5. *Zapisz typ* tworzy `config/document_types/<identyfikator>.yaml`, przeładowuje konfigurację i ponownie przetwarza dokumenty spoza puli.
+
+Zapisany plik jest zwykłym YAML opisanym niżej, więc można go dalej dopracować ręcznie.
+
+## Ręcznie w YAML
+
+### Przykład: wezwanie do uzupełnienia wpisu
 
 ```yaml
 name: wezwanie_wpis

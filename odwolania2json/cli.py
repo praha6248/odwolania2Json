@@ -40,6 +40,14 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--strict", action="store_true", help="require exact matches for long strings")
     ev.add_argument("--llm", action=argparse.BooleanOptionalAction, default=None)
 
+    chk = sub.add_parser("check", help="run the formal checks of config/formal_checks.yaml for every case folder")
+    chk.add_argument("input", type=Path, nargs="?", default=ROOT / "input")
+    chk.add_argument("--json", action="store_true", help="print the results as JSON")
+
+    anon = sub.add_parser("anonymize", help="write copies of the PDFs with personal data blacked out")
+    anon.add_argument("input", type=Path, nargs="?", default=ROOT / "input")
+    anon.add_argument("-o", "--output", type=Path, default=ROOT / "output_anonimizacja")
+
     serve = sub.add_parser("serve", help="start the web interface")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
@@ -53,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point; defaults to the 'run' command when no subcommand is given."""
     parser = build_parser()
     argv = sys.argv[1:] if argv is None else argv
-    if not any(a in {"run", "extract", "eval", "serve", "types", "llm-check"} for a in argv) and not any(a in {"-h", "--help", "--version"} for a in argv):
+    if not any(a in {"run", "extract", "eval", "check", "anonymize", "serve", "types", "llm-check"} for a in argv) and not any(a in {"-h", "--help", "--version"} for a in argv):
         argv = [*argv, "run"]
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")
@@ -117,6 +125,44 @@ def main(argv: list[str] | None = None) -> int:
         if result.data is None:
             print(result.message, file=sys.stderr)
             return 2
+        return 0
+
+    if args.command == "check":
+        from .formal import run_checks, summary
+
+        icons = {"ok": "OK", "warn": "UWAGA", "error": "BŁĄD", "skip": "--"}
+        report = {}
+        for folder in sorted({p.parent for p in args.input.rglob("*.pdf")}):
+            documents = []
+            for pdf in sorted(folder.glob("*.pdf")):
+                result = processor.process_pdf(pdf)
+                documents.append({"doc_type": result.doc_type, "data": result.data})
+            results = run_checks(settings.formal_checks, documents)
+            report[str(folder.relative_to(args.input)) or "."] = {"formal": summary(results), "checks": results}
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 0
+        for name, case in report.items():
+            print(f"{name}: {icons[case['formal']]}")
+            for item in case["checks"]:
+                print(f"  {icons[item['status']]:<6}{item['label']}: {item['detail']}")
+        return 0
+
+    if args.command == "anonymize":
+        from .anonymize import redact
+
+        for folder in sorted({p.parent for p in args.input.rglob("*.pdf")}):
+            results = {pdf: processor.process_pdf(pdf) for pdf in sorted(folder.glob("*.pdf"))}
+            for pdf, result in results.items():
+                target = args.output / pdf.relative_to(args.input)
+                if result.ocr:
+                    print(f"  {target.name}: skan bez warstwy tekstowej, pominięto")
+                    continue
+                related = [f for other, r in results.items() if other != pdf for f in r.fields]
+                data, counts = redact(pdf, result.fields, result.text, related)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+                print(f"{target}: " + (", ".join(f"{k} {v}" for k, v in counts.items()) or "brak danych osobowych"))
         return 0
 
     if args.command == "eval":

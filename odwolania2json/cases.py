@@ -36,8 +36,10 @@ def key(text: str | None) -> str:
     return re.sub(r"[\W_]+", "", fold(text or "").lower())
 
 
-def group_cases(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Group documents by procurement reference and report whether their parties agree."""
+def group_cases(documents: list[dict[str, Any]], checks: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Group documents by procurement reference, report whether their parties agree and run the formal checks."""
+    from .formal import run_checks, summary
+
     groups: dict[str, dict[str, Any]] = {}
     loose = []
     for doc in documents:
@@ -65,6 +67,9 @@ def group_cases(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "consistent": all(m["status"] != "rozbieżne" for m in members),
             "missing_types": sorted({"odwolanie", "pelnomocnictwo", "przelew"} - types),
         })
+        if checks:
+            results = run_checks(checks, group["documents"])
+            out[-1].update({"checks": results, "formal": summary(results)})
     out.sort(key=lambda g: g["reference"])
     if loose:
         out.append({"reference": None, "documents": [{"id": d["id"], "filename": d["filename"], "doc_type": d["doc_type"], "doc_label": d.get("doc_label"), "party": (d.get("case_values") or {}).get("party"), "status": "bez numeru"} for d in loose], "consistent": True, "missing_types": []})

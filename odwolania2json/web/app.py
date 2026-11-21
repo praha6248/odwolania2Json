@@ -200,6 +200,58 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         state["processor"] = Processor(state["settings"])
         return info()
 
+    def sample(doc_id: str) -> dict[str, Any]:
+        """Return a processed document used as a sample in the type wizard."""
+        result = store.get(doc_id).get("result")
+        if not result or not result.get("text"):
+            raise HTTPException(status_code=400, detail="Dokument nie ma tekstu.")
+        return result
+
+    @app.post("/api/wizard/suggest")
+    def wizard_suggest(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Suggest a field rule for a value selected in the sample text."""
+        from ..wizard import suggest_field
+
+        try:
+            return suggest_field(sample(body["doc_id"])["text"], int(body["start"]), int(body["end"]))
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/wizard/keywords/{doc_id}")
+    def wizard_keywords(doc_id: str) -> dict[str, Any]:
+        """Suggest classification keywords from the sample text."""
+        from ..wizard import suggest_keywords
+
+        return suggest_keywords(sample(doc_id)["text"])
+
+    @app.post("/api/wizard/preview")
+    def wizard_preview(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Run a draft type on the sample and score it against the other uploaded documents."""
+        from ..wizard import preview
+
+        doc = sample(body["doc_id"])
+        others = [i["result"] for i in store.items.values() if "result" in i and i["id"] != doc["id"]]
+        try:
+            return preview(body.get("draft") or {}, doc["text"], doc["filename"], others, state["settings"].min_classification_score)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Błąd w definicji typu: {exc}") from exc
+
+    @app.post("/api/types")
+    def save_type(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Save a draft type as YAML in the configuration directory and reload the configuration."""
+        from ..config import DEFAULT_CONFIG_DIR
+        from ..wizard import save
+
+        target = state["settings"].config_dir or DEFAULT_CONFIG_DIR
+        try:
+            path = save(body.get("draft") or {}, Path(target), bool(body.get("overwrite")))
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reload()
+        return {"path": str(path), "name": path.stem, **info()}
+
     @app.post("/api/documents")
     async def upload(files: list[UploadFile] = File(...)) -> list[dict[str, Any]]:
         """Accept one or more PDFs, process them and return extraction results."""
@@ -283,10 +335,42 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"LLM: {exc}") from exc
 
+    @app.post("/api/search")
+    def search_documents(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Find the best matching fragments of the uploaded documents without a language model (BM25)."""
+        from ..assistant import search
+
+        query = str(body.get("question") or "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="Wpisz pytanie lub frazę.")
+        documents = [i["result"] for i in store.items.values() if "result" in i]
+        return {"hits": search(query, documents)}
+
+    def processed() -> list[dict[str, Any]]:
+        """Processed documents in upload order."""
+        return [i["result"] for i in store.items.values() if "result" in i]
+
+    @app.get("/api/export.xlsx")
+    def export_xlsx() -> Response:
+        """Excel workbook with a summary, one sheet per type and the formal checks."""
+        from ..export import to_xlsx
+
+        docs = processed()
+        labels = {t.name: t.label for t in state["settings"].document_types}
+        data = to_xlsx(docs, group_cases(docs, state["settings"].formal_checks), labels)
+        return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="odwolania2json.xlsx"'})
+
+    @app.get("/api/export.csv")
+    def export_csv() -> Response:
+        """One CSV row per document with every output field."""
+        from ..export import to_csv
+
+        return Response(to_csv(processed()), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="odwolania2json.csv"'})
+
     @app.get("/api/cases")
     def cases() -> list[dict[str, Any]]:
         """Group uploaded documents into cases by procurement reference and check party consistency."""
-        return group_cases([i["result"] for i in store.items.values() if "result" in i])
+        return group_cases([i["result"] for i in store.items.values() if "result" in i], state["settings"].formal_checks)
 
     @app.delete("/api/documents/{doc_id}")
     def delete(doc_id: str) -> dict[str, str]:
@@ -338,6 +422,36 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             image.save(buffer, format="PNG", optimize=True)
             cache[number] = buffer.getvalue()
         return Response(cache[number], media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+
+    @app.get("/api/documents/{doc_id}/locate/{name}")
+    def locate_field(doc_id: str, name: str) -> dict[str, Any]:
+        """Boxes on the PDF pages where a field value was found, for highlighting in the preview."""
+        from ..locate import locate
+
+        item = store.get(doc_id)
+        result = item.get("result") or {}
+        field = next((f for f in result.get("fields") or [] if f["field"] == name), None)
+        if field is None:
+            raise HTTPException(status_code=404, detail="Nieznane pole")
+        if result.get("ocr"):
+            return {"field": name, "boxes": [], "reason": "Skan bez warstwy tekstowej: źródło zaznaczamy w zakładce Tekst."}
+        return {"field": name, "boxes": locate(item["path"], field, result.get("text") or "")}
+
+    @app.get("/api/documents/{doc_id}/anonymized.pdf")
+    def anonymized(doc_id: str) -> Response:
+        """The PDF with personal data blacked out; names are also taken from the other documents of the same case."""
+        from ..anonymize import redact
+        from ..cases import key
+
+        item = store.get(doc_id)
+        result = item.get("result") or {}
+        if result.get("ocr"):
+            raise HTTPException(status_code=400, detail="Anonimizacja wymaga PDF z warstwą tekstową.")
+        reference = key((result.get("case_values") or {}).get("reference"))
+        related = [f for other in store.items.values() if other["id"] != doc_id and reference and key(((other.get("result") or {}).get("case_values") or {}).get("reference")) == reference for f in other["result"].get("fields") or []]
+        data, counts = redact(item["path"], result.get("fields") or [], result.get("text") or "", related)
+        name = Path(result.get("filename") or "dokument.pdf").stem + "_anonimizacja.pdf"
+        return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Redacted": json.dumps(counts), "Access-Control-Expose-Headers": "X-Redacted"})
 
     @app.get("/api/documents/{doc_id}/json")
     def download(doc_id: str) -> Response:
