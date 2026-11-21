@@ -53,4 +53,5 @@ PDF z warstwą tekstu: ok. 0,01–0,15 s na dokument na zwykłym CPU. OCR: kilka
 - `Dockerfile` i `docker-compose.yml`: interfejs webowy oraz profil `batch` (Tesseract `pol` w obrazie);
 - `tools/build.py`: PyInstaller (`--onedir`), paczki `.zip` / `.tar.gz` z SHA-256, instalator Inno Setup (`packaging/installer.iss`);
 - GitHub Actions: `checks`, `bump version`, `release` (Windows i Linux, GHCR), `download page` (GitHub Pages);
-- `update_check.py`: aplikacja porównuje swoją wersję z `releases/latest`.
+- `update_check.py`: aplikacja porównuje swoją wersję z `releases/latest`;
+- `delta.py` / `updater.py`: aktualizacje różnicowe. Wydanie zawiera paczkę plików skompresowanych osobno i manifest (ścieżka, rozmiar, SHA-256, przesunięcie). Aplikacja liczy, które pliki się zmieniły, pobiera tylko ich zakresy bajtów (HTTP Range, sąsiednie zakresy łączone w jedno zapytanie), weryfikuje SHA-256 i po wyjściu podmienia pliki skryptem. Ścieżki z manifestu są sprawdzane pod kątem wyjścia poza katalog instalacji, a foldery użytkownika (`config`, `input`, `output`) są wyłączone z manifestu.

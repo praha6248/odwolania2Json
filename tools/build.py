@@ -5,6 +5,7 @@ Usage: python tools/build.py [--installer]
 Outputs into dist/release:
     Odwolania2JSON-<version>-<platform>.zip|.tar.gz   portable package (config, input, output included)
     Odwolania2JSON-<version>-windows-setup.exe          Windows installer (with --installer, needs Inno Setup)
+    Odwolania2JSON-<platform>.pack / .manifest.json     per-file pack for in-app patch updates (only changed files)
     *.sha256                                            checksums the updater and the download page show
 """
 
@@ -22,6 +23,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 DIST = ROOT / "dist"
 RELEASE = DIST / "release"
 NAME = "Odwolania2JSON"
@@ -102,6 +104,13 @@ def pack(app: Path) -> Path:
     return target
 
 
+def patch_assets(app: Path) -> None:
+    """Write the pack and manifest used by in-app differential (patch) updates."""
+    from odwolania2json.delta import build_pack
+
+    build_pack(app, RELEASE, f"{NAME}-{platform_name()}", version())
+
+
 def installer() -> Path:
     """Compile the Windows installer with Inno Setup."""
     iscc = shutil.which("iscc") or r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
@@ -118,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     app = pyinstaller()
     print(pack(app))
+    patch_assets(app)
     if args.installer and platform_name() == "windows":
         print(installer())
     return 0
