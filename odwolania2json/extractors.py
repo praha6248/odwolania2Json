@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from . import fuzzy_re as fx
 from .engine import Context, Evidence, extractor, snippet
 from .normalizers import DATE_PATTERN, date_iso, entity_name, person_name
 
@@ -42,14 +43,14 @@ DEFAULT_LEADS = [
     r"^\s*Wykonawca\s*:?[ \t]*\n?",
     r"(?:my|ja),?\s+niżej\s+podpisan\w*(?:\(a\))?,?\s+(?:w\s+imieniu\s+)?",
 ]
-HEADER_LINE = re.compile(r"^\s*(?:P\s*E\s*Ł\s*N\s*O\s*M\s*O\s*C\s*N\s*I\s*C\s*T\s*W\s*O(?:\s+\w+)?|[^\n]*\d{4}(?:\s*r\.)?)\s*$", re.I)
+HEADER_LINE = r"^\s*(?:P\s*E\s*Ł\s*N\s*O\s*M\s*O\s*C\s*N\s*I\s*C\s*T\s*W\s*O(?:\s+\w+)?|[^\n]*\d{4}(?:\s*r\.)?)\s*$"
 
 
 def skip_header(head: str) -> int:
     """Return the offset of the first line that is neither a document title nor a place/date line."""
     offset = 0
     for line in head.split("\n"):
-        if line.strip() and not HEADER_LINE.match(line):
+        if line.strip() and not fx.match(HEADER_LINE, line, re.I):
             return offset
         offset += len(line) + 1
     return 0
@@ -59,7 +60,7 @@ def ids_in(text: str) -> dict[str, str | None]:
     """Return the first KRS, NIP and REGON numbers found in a text fragment."""
     out: dict[str, str | None] = {}
     for key, pattern in ID_PATTERNS.items():
-        match = re.search(pattern, text, re.I)
+        match = fx.search(pattern, text, re.I)
         out[key] = re.sub(r"\D", "", match.group(1)) if match else None
     return out
 
@@ -67,7 +68,7 @@ def ids_in(text: str) -> dict[str, str | None]:
 def cut_name(text: str) -> str | None:
     """Return the organization name at the start of a fragment, ending before its address or identifiers."""
     text = text.strip().lstrip(":;,. ").strip()
-    match = re.search(ADDRESS_STOP, text, re.I)
+    match = fx.search(ADDRESS_STOP, text, re.I)
     name = text[: match.start()] if match else text.split("\n")[0]
     name = re.sub(r"\s*\n\s*", " ", name)
     return entity_name(name)
@@ -76,7 +77,7 @@ def cut_name(text: str) -> str | None:
 def is_person_line(line: str) -> bool:
     """Tell whether a line looks like a bare person name (signature line)."""
     line = re.sub(rf"^{TITLES}\s*", "", line.strip(), flags=re.I)
-    if not re.fullmatch(PERSON, line):
+    if not fx.fullmatch(PERSON, line):
         return False
     return not any(word in NOT_PERSON_WORDS for word in line.split())
 
@@ -98,7 +99,7 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
     """Extract the principals (mocodawcy) of a power of attorney with their signatories."""
     text = ctx.text
     head_end = len(text)
-    grant_verbs = list(re.finditer(r"\b(?:udziela\w*|ustanawia\w*|upoważnia\w*)\b", text, re.I))
+    grant_verbs = list(fx.finditer(r"\b(?:udziela\w*|ustanawia\w*|upoważnia\w*)\b", text, re.I))
     if grant_verbs:
         head_end = grant_verbs[0].start()
         if head_end < 80 and len(grant_verbs) > 1:
@@ -106,7 +107,7 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
     head = text[:head_end]
     principals: list[dict[str, Any]] = []
 
-    natural = re.search(
+    natural = fx.search(
         rf"(?:niżej podpisan\w+|Ja,)\s+(?:{TITLES}\s+)?({PERSON}),?\s+(?:prowadząc\w+|działając\w*)[^\n]*?(?:pod\s+(?:firmą|nazwą))\s+(.+?){ADDRESS_STOP}",
         head,
         re.I | re.S,
@@ -117,7 +118,7 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
         data["krs"] = ids_in(head)["krs"]
         principals.append({"data": data, "start": natural.start()})
     else:
-        items = list(re.finditer(r"(?:^|\s)(\d)\)\s+", head))
+        items = list(fx.finditer(r"(?:^|\s)(\d)\)\s+", head))
         chunks: list[tuple[int, str]] = []
         if len(items) >= 2:
             for index, item in enumerate(items):
@@ -126,7 +127,7 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
         else:
             start = 0
             for lead in spec.get("principal_leads", DEFAULT_LEADS):
-                match = re.search(lead, head, re.I | re.M)
+                match = fx.search(lead, head, re.I | re.M)
                 if match:
                     start = match.end()
                     break
@@ -156,16 +157,16 @@ def extract_principals(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
 
 def signers_by_principal(text: str, names: list[str]) -> list[list[str]]:
     """Group signature names by principal using 'W imieniu X:' headers, else assign all to the first."""
-    accept = re.search(r"Pełnomocnictwo\s+przyjmuj|Przyjmuję\s+pełnomocnictwo|Podpis(?:y)?\s+pełnomocnik|Pełnomocni(?:k|cy)\s*:\s*\n", text, re.I)
+    accept = fx.search(r"Pełnomocnictwo\s+przyjmuj|Przyjmuję\s+pełnomocnictwo|Podpis(?:y)?\s+pełnomocnik|Pełnomocni(?:k|cy)\s*:\s*\n", text, re.I)
     tail_start = None
     for marker in (r"\n\s*Mocodawca\s*:?\s*\n", r"\n\s*W imieniu [^\n]*:\s*\n", r"\n\s*Za\s+Mocodawc\w+\s*:?\s*\n", r"\n\s*(?:Podpis(?:y)?|W imieniu Mocodawcy)[^\n]*\n", r"\n\.{5,}"):
-        match = re.search(marker, text, re.I)
+        match = fx.search(marker, text, re.I)
         if match and (accept is None or match.start() < accept.start()) and (tail_start is None or match.start() < tail_start):
             tail_start = match.start()
     if tail_start is None:
         return [[] for _ in names]
     block = text[tail_start: accept.start() if accept and accept.start() > tail_start else len(text)]
-    groups = re.split(r"\n\s*W imieniu\s+([^\n]+?):?\s*\n", block)
+    groups = fx.split(r"\n\s*W imieniu\s+([^\n]+?):?\s*\n", block)
     if len(groups) > 1 and len(names) > 1:
         out: list[list[str]] = [[] for _ in names]
         for label, body in zip(groups[1::2], groups[2::2]):
@@ -188,15 +189,15 @@ def best_match(label: str, names: list[str]) -> int:
 def extract_attorneys(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | None]:
     """Extract attorneys appointed in a power of attorney with optional PESEL numbers."""
     text = ctx.text
-    accept = re.search(r"Pełnomocnictwo\s+przyjmuj\w*\s*:?|Przyjmuję\s+pełnomocnictwo\s*:?", text, re.I)
+    accept = fx.search(r"Pełnomocnictwo\s+przyjmuj\w*\s*:?|Przyjmuję\s+pełnomocnictwo\s*:?", text, re.I)
     segment = text[: accept.start()] if accept else text
     people: list[dict[str, Any]] = []
-    for match in re.finditer(rf"{TITLES}\s*({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", segment):
+    for match in fx.finditer(rf"{TITLES}\s*({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", segment):
         name = person_name(re.sub(r"\s+", " ", match.group(1)))
         if not name or any(w in NOT_PERSON_WORDS for w in name.split()):
             continue
         after = segment[match.end(): match.end() + 80]
-        pesel = re.match(r"[^;\n]*?PESEL[:\s]*(\d{11})", after, re.I)
+        pesel = fx.match(r"[^;\n]*?PESEL[:\s]*(\d{11})", after, re.I)
         if all(p["imie_nazwisko"] != name for p in people):
             people.append({"imie_nazwisko": name, "pesel": pesel.group(1) if pesel else None})
     if not people:
@@ -213,7 +214,7 @@ def extract_dated_event(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Eviden
     """Return the ISO date of the first sentence in scope that mentions a configured event verb."""
     text, offset = ctx.scope(spec.get("scope"))
     pattern = spec.get("pattern", rf"(?:w dniu|dnia)\s+({DATE_PATTERN})")
-    for match in re.finditer(pattern, text, re.I):
+    for match in fx.finditer(pattern, text, re.I):
         value = date_iso(match.group(1))
         if value:
             start, end = match.span(1)
@@ -230,10 +231,10 @@ PARTY_STOP = (
 
 def party_block(text: str, label: str, stop: str) -> tuple[str, int] | None:
     """Return the text block that follows a party label line, up to the next party/section label."""
-    match = re.search(rf"^\s*{label}", text, re.I | re.M)
+    match = fx.search(rf"^\s*{label}", text, re.I | re.M)
     if not match:
         return None
-    end_match = re.compile(stop, re.I | re.M).search(text, match.end() + 1)
+    end_match = fx.search(stop, text, re.I | re.M, match.end() + 1)
     end = end_match.start() if end_match else min(len(text), match.end() + 1500)
     return text[match.end():end], match.end()
 
@@ -242,13 +243,13 @@ def parse_entity(block: str) -> dict[str, Any]:
     """Parse name, identifiers, representative, law firm and e-mail from a party block."""
     body = re.sub(r"^\s*(?:\([^)]*\)\s*)?:?", "", block, count=1)
     first = body.lstrip()
-    if re.match(r"(?:Konsorcjum|wykonawcy\s+wspólnie)", first, re.I):
+    if fx.match(r"(?:Konsorcjum|wykonawcy\s+wspólnie)", first, re.I):
         first = first.split("\n", 1)[1] if "\n" in first else ""
     first = re.sub(r"^\s*\d\)\s*[^\n]*:\s*\n", "", first)
     name = cut_name(first)
-    rep = re.search(rf"reprezentowan\w*\s+przez\s*:?\s*(?:{TITLES}\s*)?({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
-    firm = re.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*tel)", body, re.I | re.S)
-    mail = re.search(EMAIL, body[rep.start():] if rep else "")
+    rep = fx.search(rf"reprezentowan\w*\s+przez\s*:?\s*(?:{TITLES}\s*)?({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
+    firm = fx.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*tel)", body, re.I | re.S)
+    mail = fx.search(EMAIL, body[rep.start():] if rep else "")
     return {
         "name": name,
         **ids_in(body),
@@ -260,7 +261,7 @@ def parse_entity(block: str) -> dict[str, Any]:
 
 def split_members(block: str) -> list[tuple[str, str]]:
     """Split a party block into numbered members, returning (header line, member text) pairs."""
-    items = list(re.finditer(r"^\s*\d\)\s*([^\n]*)\n", block, re.M))
+    items = list(fx.finditer(r"^\s*\d\)\s*([^\n]*)\n", block, re.M))
     if len(items) < 2:
         return []
     out = []
@@ -280,7 +281,7 @@ def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
     members = split_members(block)
     main = block
     if members:
-        leader = next((m for m in members if re.search(r"lider|pełnomocnik", m[0], re.I)), members[0])
+        leader = next((m for m in members if fx.search(r"lider|pełnomocnik", m[0], re.I)), members[0])
         main = leader[1]
     entity = parse_entity(main)
     shared = parse_entity(block)
@@ -312,7 +313,7 @@ def extract_contracting_authorities(ctx: Context, spec: dict[str, Any]) -> tuple
     if members:
         for header, body in members:
             entity = parse_entity(body)
-            leading = 1 if re.search(r"prowadząc|lider|pełnomocnik\s+zamawiaj", header, re.I) else 0
+            leading = 1 if fx.search(r"prowadząc|lider|pełnomocnik\s+zamawiaj", header, re.I) else 0
             out.append({"krs": entity["krs"], "nazwa": entity["name"], "nip": entity["nip"], "regon": entity["regon"], "prowadzacy_postepowanie": leading})
     else:
         entity = parse_entity(block)

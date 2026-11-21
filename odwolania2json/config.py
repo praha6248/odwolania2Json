@@ -32,6 +32,7 @@ class Settings:
 
     min_classification_score: float = 3.0
     llm: dict[str, Any] = field(default_factory=dict)
+    ocr: dict[str, Any] = field(default_factory=dict)
     document_types: list[DocumentType] = field(default_factory=list)
 
     def get_type(self, name: str) -> DocumentType | None:
@@ -73,5 +74,6 @@ def load_settings(config_dir: str | Path | None = None) -> Settings:
     return Settings(
         min_classification_score=float(raw.get("min_classification_score", 3.0)),
         llm=llm,
+        ocr=dict(raw.get("ocr", {}) or {}),
         document_types=types,
     )

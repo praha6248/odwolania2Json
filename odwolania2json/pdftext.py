@@ -6,16 +6,19 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pypdf import PdfReader
 
 
 @dataclass
 class DocumentText:
-    """Plain text of a PDF document together with per-page content."""
+    """Plain text of a PDF document together with per-page content and OCR information."""
 
     path: Path
     pages: list[str] = field(default_factory=list)
+    ocr_pages: list[int] = field(default_factory=list)
+    ocr_engine: str | None = None
 
     @property
     def text(self) -> str:
@@ -35,14 +38,36 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
-def extract_text(path: str | Path) -> DocumentText:
-    """Read a PDF file and return its cleaned text split into pages."""
+def extract_text(path: str | Path, ocr: dict[str, Any] | None = None) -> DocumentText:
+    """Read a PDF and return cleaned text per page, running OCR on pages without a usable text layer."""
     path = Path(path)
     reader = PdfReader(str(path))
     pages = [clean_text(page.extract_text() or "") for page in reader.pages]
-    return DocumentText(path=path, pages=pages)
+    doc = DocumentText(path=path, pages=pages)
+    ocr = ocr or {}
+    if not ocr.get("enabled", True):
+        return doc
+    min_chars = int(ocr.get("min_chars_per_page", 40))
+    max_pages = int(ocr.get("max_pages", 4))
+    missing = [i for i, text in enumerate(pages) if len(re.sub(r"\s", "", text)) < min_chars][:max_pages]
+    if not missing:
+        return doc
+    from .ocr import ocr_pages
+
+    texts, engine = ocr_pages(path, missing, ocr)
+    for index, text in texts.items():
+        doc.pages[index] = clean_text(text)
+    doc.ocr_pages = sorted(texts)
+    doc.ocr_engine = engine
+    return doc
+
+
+def fold(text: str) -> str:
+    """Strip Polish diacritics so that OCR output without accents still matches keywords."""
+    text = text.replace("ł", "l").replace("Ł", "L")
+    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
 
 
 def compact(text: str) -> str:
-    """Return a lowercase copy of text without whitespace, used for robust keyword matching."""
-    return re.sub(r"\s+", "", text).lower()
+    """Return a lowercase, accent-free copy of text without whitespace for robust keyword matching."""
+    return fold(re.sub(r"\s+", "", text)).lower()

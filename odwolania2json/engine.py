@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import fuzzy_re as fx
 from . import normalizers
 from .config import DocumentType
 
@@ -114,7 +115,7 @@ def find_sections(text: str, doc_type: DocumentType) -> dict[str, tuple[int, int
         starts = spec["start"] if isinstance(spec["start"], list) else [spec["start"]]
         begin = None
         for pattern in starts:
-            match = re.search(pattern, text, flags_of(spec))
+            match = fx.search(pattern, text, flags_of(spec))
             if match and (begin is None or match.start() < begin[0]):
                 begin = (match.start(), match.end())
         if begin is None:
@@ -123,7 +124,7 @@ def find_sections(text: str, doc_type: DocumentType) -> dict[str, tuple[int, int
         end_pos = len(text)
         ends = spec.get("end") or []
         for pattern in ends if isinstance(ends, list) else [ends]:
-            match = re.compile(pattern, flags_of(spec)).search(text, begin[1])
+            match = fx.search(pattern, text, flags_of(spec), begin[1])
             if match and match.start() < end_pos:
                 end_pos = match.start()
         max_chars = spec.get("max_chars")
@@ -139,7 +140,7 @@ def extract_regex(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | N
     text, offset = ctx.scope(spec.get("scope"))
     pattern = spec["pattern"]
     group = spec.get("group", 1)
-    matches = list(re.finditer(pattern, text, flags_of(spec)))
+    matches = list(fx.finditer(pattern, text, flags_of(spec)))
     if not matches:
         return None, None
     index = spec.get("occurrence", 0)
@@ -168,11 +169,11 @@ def extract_label(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | N
     value_re = spec.get("value", r"[^\n]+")
     if spec.get("until"):
         for label in spec["labels"]:
-            match = re.search(rf"{anchor(spec)}{label}{SEPARATOR}\n?", text, flags_of(spec))
+            match = fx.search(rf"{anchor(spec)}{label}{SEPARATOR}\n?", text, flags_of(spec))
             if not match:
                 continue
             rest = text[match.end():]
-            stop = re.search(spec["until"], rest, flags_of(spec))
+            stop = fx.search(spec["until"], rest, flags_of(spec))
             body = rest[: stop.start()] if stop else rest[: int(spec.get("max_chars", 400))]
             start = match.end()
             end = start + len(body)
@@ -182,7 +183,7 @@ def extract_label(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | N
         return None, None
     for label in spec["labels"]:
         pattern = rf"{anchor(spec)}{label}{SEPARATOR}(?:\n[ \t]*)?({value_re})"
-        match = re.search(pattern, text, flags_of(spec))
+        match = fx.search(pattern, text, flags_of(spec))
         if match:
             start, end = match.span(1)
             return match.group(1), Evidence(f"label:{label}", snippet(text, start, end), offset + start, offset + end)
@@ -196,7 +197,7 @@ def extract_keyword_map(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Eviden
     best: tuple[float, int, Any, re.Match[str]] | None = None
     for option in spec["options"]:
         for keyword in option.get("keywords", []):
-            match = re.search(keyword, text, flags_of(spec))
+            match = fx.search(keyword, text, flags_of(spec))
             if not match:
                 continue
             rank = (-float(option.get("priority", 0)), match.start())
