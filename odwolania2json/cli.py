@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8000)
 
     sub.add_parser("types", help="list configured document types, extractors and normalizers")
+    sub.add_parser("llm-check", help="test the configured LLM endpoint (models, JSON answer, latency)")
     return parser
 
 
@@ -52,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point; defaults to the 'run' command when no subcommand is given."""
     parser = build_parser()
     argv = sys.argv[1:] if argv is None else argv
-    if not any(a in {"run", "extract", "eval", "serve", "types"} for a in argv) and not any(a in {"-h", "--help", "--version"} for a in argv):
+    if not any(a in {"run", "extract", "eval", "serve", "types", "llm-check"} for a in argv) and not any(a in {"-h", "--help", "--version"} for a in argv):
         argv = [*argv, "run"]
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")
@@ -76,6 +77,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{t.name:16} {t.label}  ({t.source})  fields: {', '.join(t.fields)}")
         print("extractors:", ", ".join(engine.available_extractors()))
         print("normalizers:", ", ".join(normalizers.available()))
+        return 0
+
+    if args.command == "llm-check":
+        from .llm import LLMClient
+
+        client = LLMClient(settings.llm)
+        print(f"Endpoint: {client.base_url}  model: {client.model}  enabled: {settings.llm.get('enabled', False)}")
+        try:
+            print("Models:", ", ".join(client.models()) or "(none listed)")
+            print(json.dumps(client.check(), ensure_ascii=False, indent=2))
+        except Exception as exc:
+            print(f"LLM check failed: {exc}")
+            return 1
         return 0
 
     processor = Processor(settings, use_llm=getattr(args, "llm", None))

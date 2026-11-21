@@ -60,8 +60,22 @@ def load_document_type(path: Path) -> DocumentType:
     )
 
 
+def load_dotenv(*paths: Path) -> None:
+    """Load KEY=VALUE lines from .env files into the environment without overriding existing variables."""
+    for path in paths:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 def load_settings(config_dir: str | Path | None = None) -> Settings:
     """Load settings.yaml, import extractor plugin modules and read every document type from the configuration directory."""
+    load_dotenv(Path.cwd() / ".env", DEFAULT_CONFIG_DIR.parent / ".env")
     config_dir = Path(config_dir or os.environ.get("O2J_CONFIG_DIR") or DEFAULT_CONFIG_DIR)
     settings_file = config_dir / "settings.yaml"
     raw = yaml.safe_load(settings_file.read_text(encoding="utf-8")) if settings_file.exists() else {}

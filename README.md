@@ -45,6 +45,7 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument nierozpoz
 | `python -m odwolania2json serve [--port 8000]` | interfejs webowy |
 | `python -m odwolania2json eval <katalog_z_danymi> [--errors 20] [--strict]` | precyzja, czułość i F1 względem plików referencyjnych |
 | `python -m odwolania2json types` | lista typów dokumentów, ekstraktorów i normalizatorów |
+| `python -m odwolania2json llm-check` | test połączenia z modelem językowym |
 
 ### Interfejs webowy
 
@@ -102,11 +103,11 @@ Reguły nie potrzebują sieci ani GPU. Model językowy włącza się zmiennymi �
 ```bash
 O2J_LLM_ENABLED=true
 O2J_LLM_URL=http://localhost:11434/v1        # Ollama / vLLM / llama.cpp / dostawca w UE
-O2J_LLM_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q4_K_M
+O2J_LLM_MODEL=hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0
 O2J_LLM_API_KEY=...
 ```
 
-Model uzupełnia tylko pola wskazane w sekcji `llm.fields` danego typu, które reguły zostawiły puste. Takie pola są oznaczone w śladzie jako `source: llm`.
+Model uzupełnia tylko pola wskazane w sekcji `llm.fields` danego typu, które reguły zostawiły puste. Takie pola są oznaczone w śladzie jako `source: llm`. Połączenie sprawdzisz poleceniem `python -m odwolania2json llm-check`. Konfiguracja Ollamy na własnym komputerze i wybór dostawcy w UE: [docs/llm.md](docs/llm.md).
 
 ## Jakość
 
