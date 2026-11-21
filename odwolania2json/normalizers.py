@@ -95,12 +95,14 @@ def digits(value: str) -> str | None:
 
 @normalizer("account")
 def account(value: str) -> str | None:
-    """Normalize a bank account number to its digits, keeping the PL country prefix when the document shows it."""
+    """Account number as written in the document without whitespace: digits, with the country code (PL or other) when shown."""
     text = str(value).strip()
+    country = re.match(r"([A-Za-z]{2})\s?\d", text)
+    if country:
+        body = re.sub(r"[^0-9A-Za-z]", "", text[2:]).upper()
+        return country.group(1).upper() + body if body else None
     digits = re.sub(r"[^0-9]", "", text)
-    if not digits:
-        return None
-    return f"PL{digits}" if re.match(r"PL", text, re.I) else digits
+    return digits or None
 
 
 @normalizer("date_iso")
