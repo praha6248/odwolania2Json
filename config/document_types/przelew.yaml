@@ -53,7 +53,7 @@ fields:
     extract:
       - type: label
         labels: ["Kwota operacji", "Kwota przelewu", "Kwota transakcji", "Kwota", "Wartość"]
-        value: '(?:PLN|EUR)?[ \t]?\d[\d \u00a0.,]*\d(?=[ \t]*(?:PLN|zł|EUR)?[ \t]*(?:\n|$))|\d+'
+        value: '(?:PLN|EUR)?[ \t]?\d[\d \u00a0.,]*\d(?=[ \t]*(?:PLN|zł|EUR|\(|$))|\d+'
       - type: regex
         pattern: 'w kwocie\s+([\d][\d \.,]*\d)'
 

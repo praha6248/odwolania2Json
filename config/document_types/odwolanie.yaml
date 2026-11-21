@@ -19,7 +19,7 @@ classify:
     odwołanie: 4
   require:
     - name: etykieta strony "Odwołujący:" w nagłówku
-      any: ['^\s*Odwołując\w*\s*:']
+      any: ['^[^\n]{0,60}?\bOdwołując\w*\s*\)?\s*:']
   negative:
     '^\s*Sygn\.?\s*akt': 30
     '^\s*(?:WYROK|POSTANOWIENIE|UCHWAŁA|ZARZĄDZENIE)\s*$': 30
@@ -87,7 +87,7 @@ fields:
       Reason id 1-12 of the challenged act, based only on the first charge. 1 odrzucenie oferty, 2 wybór oferty,
       3 wykluczenie wykonawcy, 4 publikacja SWZ, 5 modyfikacja SWZ, 6 odpowiedzi i wyjaśnienia do SWZ,
       7 zaniechanie odrzucenia oferty, 8 zaniechanie wykluczenia, 9 unieważnienie postępowania,
-      10 zaniechanie unieważnienia, 11 opis przedmiotu zamówienia, 12 inna czynność.
+      10 zaniechanie unieważnienia, 11 opis przedmiotu zamówienia (OPZ), 12 projektowane postanowienia umowy.
     normalize: [int]
     extract:
       - type: keyword_map
@@ -103,6 +103,7 @@ fields:
           - {value: 9, priority: 1, keywords: ['unieważni\w*\s+postępowani']}
           - {value: 2, priority: 1, keywords: ['wyb(?:ór|or\w*)\s+(?:jako\s+najkorzystniejszej\s+)?oferty', 'najkorzystniejsz']}
           - {value: 4, priority: 1, keywords: ['opublikował\w*\s+Specyfikac', 'ustaleni\w*\s+treści\s+(?:SWZ|Specyfikacji)', 'treści\s+SWZ', 'Specyfikacj\w*\s+Warunków']}
+          - {value: 12, priority: 1, keywords: ['projektowan\w*\s+postanowie\w*\s+umowy', 'istotn\w*\s+postanowie\w*\s+umowy', 'postanowie\w*\s+(?:projektu\s+)?umowy', 'wzor\w*\s+umowy', 'projekt\w*\s+umowy']}
           - {value: 11, priority: 0, keywords: ['Opis\w*\s+Przedmiotu\s+Zamówienia', 'opisani\w*\s+przedmiotu', '\bOPZ\b']}
       - type: keyword_map
         scope: challenged_act
@@ -128,7 +129,7 @@ fields:
           9: Decyzja o unieważnieniu postępowania
           10: Zaniechanie unieważnienia postępowania
           11: Opis przedmiotu zamówienia (OPZ)
-          12: Inna czynność zamawiającego
+          12: Projektowane postanowienia umowy
 
   odwolujacy:
     description: Appellant or consortium leader, with attorney.
@@ -177,10 +178,10 @@ fields:
     extract:
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:pn\.?|pod\s+nazwą|nazwa\s+zamówienia|przedmiotem\s+jest)\s*:?\s*[„"“]([^”"]{5,400}?)(?:[”"]|\s*\((?=post))'
+        pattern: '(?:pn\.?|pod\s+nazwą|nazwa\s+zamówienia|przedmiotem\s+jest)\s*:?\s*[„"“]((?:[^„”"]|„[^”"]*[”"]){5,400}?)(?:[”"]|\s*\((?=post))'
         dotall: true
       - type: regex
-        pattern: '(?:pn\.?|pod\s+nazwą|przedmiotem\s+jest)\s*:?\s*[„"“]([^”"]{5,400}?)(?:[”"]|\s*\((?=post))'
+        pattern: '(?:pn\.?|pod\s+nazwą|przedmiotem\s+jest)\s*:?\s*[„"“]((?:[^„”"]|„[^”"]*[”"]){5,400}?)(?:[”"]|\s*\((?=post))'
         dotall: true
       - type: regex
         scope: [dotyczy, header]

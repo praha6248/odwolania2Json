@@ -51,6 +51,7 @@ def clean_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"(?<=[A-Za-zÀ-žĄĆĘŁŃÓŚŹŻąćęłńóśźż])-\n(?=[A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż])", "-", text)
     text = re.sub(r"(?im)^\s*Strona\s+\d+\s+z\s+\d+\s*$\n?", "", text)
     text = re.sub(r"(?i)\s*Strona\s+\d+\s+z\s+\d+\s*(?=\n)", "", text)
     return text.strip()

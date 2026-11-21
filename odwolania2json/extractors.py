@@ -12,13 +12,13 @@ from typing import Any
 
 from . import fuzzy_re as fx
 from .engine import Context, Evidence, extractor, snippet
-from .normalizers import DATE_PATTERN, date_iso, entity_name, person_name
+from .normalizers import DATE_PATTERN, OBLIQUE_TITLE, date_iso, entity_name, nominative, person_name
 
 UPPER = "A-ZĄĆĘŁŃÓŚŹŻ"
 LOWER = "a-ząćęłńóśźż"
 NAME_WORD = rf"[{UPPER}][{LOWER}]+(?:-[{UPPER}][{LOWER}]+)?"
 PERSON = rf"{NAME_WORD}(?:[ \t]+{NAME_WORD}){{1,2}}"
-TITLES = r"(?:adw\.|adwokat(?:a|em)?|r\.\s?pr\.|radc[aęy]\s+prawn(?:y|ego|ą|a)|radczyni\s+prawn[aą]|apl\.\s?(?:adw|radc)\.|aplikant\w*\s+\w+|mec\.)"
+TITLES = r"(?:adw\.|adwokat(?:a|em|owi|ka|kę|ce)?|r\.\s?pr\.|radc[aęy]\s+prawn(?:y|ego|emu|ą|a)|radczyni[ęa]?\s+prawn(?:ą|a|ej)|apl\.\s?(?:adw|radc)\.|aplikant\w*\s+\w+|mec\.|mecenas(?:a|owi)?)"
 ID_PATTERNS = {
     "krs": r"KRS(?:\s*(?:nr|numer|pod numerem))?\s*[:]?\s*(\d[\d ]{8,12}\d)",
     "nip": r"NIP\s*[:]?\s*(\d{3}[- ]?\d{3}[- ]?\d{2}[- ]?\d{2}|\d{10})",
@@ -44,7 +44,7 @@ DEFAULT_LEADS = [
     r"^\s*Wykonawca\s*:?[ \t]*\n?",
     r"(?:my|ja),?\s+niżej\s+podpisan\w*(?:\(a\))?,?\s+(?:w\s+imieniu\s+)?",
 ]
-HEADER_LINE = r"^\s*(?:P\s*E\s*Ł\s*N\s*O\s*M\s*O\s*C\s*N\s*I\s*C\s*T\s*W\s*O(?:\s+\w+)?|[^\n]*\d{4}(?:\s*r\.)?)\s*$"
+HEADER_LINE = rf"^\s*(?:P\s*E\s*Ł\s*N\s*O\s*M\s*O\s*C\s*N\s*I\s*C\s*T\s*W\s*O(?:\s+\w+)?|[^\n]{{0,40}}{DATE_PATTERN}(?:\s*r(?:oku|\.)?)?)\s*$"
 
 
 def skip_header(head: str) -> int:
@@ -204,12 +204,14 @@ def extract_attorneys(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence
     accept = fx.search(r"Pełnomocnictwo\s+przyjmuj\w*\s*:?|Przyjmuję\s+pełnomocnictwo\s*:?", text, re.I)
     segment = text[: accept.start()] if accept else text
     people: list[dict[str, Any]] = []
-    for match in fx.finditer(rf"{TITLES}\s*({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", segment):
-        name = person_name(re.sub(r"\s+", " ", match.group(1)))
+    for match in fx.finditer(rf"({TITLES})\s*({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", segment):
+        name = person_name(re.sub(r"\s+", " ", match.group(2)))
+        if name and OBLIQUE_TITLE.search(match.group(1)):
+            name = nominative(name)
         if not name or any(w in NOT_PERSON_WORDS for w in name.split()):
             continue
         after = segment[match.end(): match.end() + 80]
-        pesel = fx.match(r"[^;\n]*?PESEL[:\s]*(\d{11})", after, re.I)
+        pesel = fx.match(r"[^;()]{0,40}?PESEL[:\s]*(\d{11})", after, re.I)
         if all(p["imie_nazwisko"] != name for p in people):
             people.append({"imie_nazwisko": name, "pesel": pesel.group(1) if pesel else None})
     if not people:
@@ -236,7 +238,7 @@ def extract_dated_event(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Eviden
 
 EMAIL = r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
 PARTY_STOP = (
-    r"^\s*(?:Odwołując\w*|Zamawiając\w*|dotyczy|Wykonawca\s+wybrany|Przystępując\w*|Uczestni\w*|"
+    r"^\s*(?:[^\n]{0,60}?\(\s*(?:Odwołując|Zamawiając)\w*\s*\)\s*:|Wykonawca\s+wnosząc\w*|Odwołując\w*|Zamawiając\w*|dotyczy|Wykonawca\s+wybrany|Przystępując\w*|Uczestni\w*|"
     r"O\s*D\s*W\s*O\s*Ł\s*A\s*N\s*I\s*E|Prezes\s+Krajowej|Krajowa\s+Izba|Wartość\s+zamówienia|Wpis\s+od|Do\s*:)"
 )
 
@@ -260,8 +262,10 @@ def parse_entity(block: str) -> dict[str, Any]:
     first = re.sub(r"^\s*\d\)\s*[^\n]*:\s*\n", "", first)
     name = cut_name(first)
     represented = fx.search(r"reprezentowan\w*\s+przez|pełnomocnik\w*\s*:", body, re.I)
-    rep = fx.search(rf"reprezentowan\w*\s+przez\s*:?\s*(?:{TITLES}\s*)?({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
-    rep_name = person_name(re.sub(r"\s+", " ", rep.group(1))) if rep else None
+    rep = fx.search(rf"reprezentowan\w*\s+przez\s*:?\s*((?:{TITLES}\s*)?)({NAME_WORD}(?:[ \t]+|[ \t]*\n[ \t]*){NAME_WORD})", body, re.I)
+    rep_name = person_name(re.sub(r"\s+", " ", rep.group(2))) if rep else None
+    if rep_name and OBLIQUE_TITLE.search(rep.group(1)):
+        rep_name = nominative(rep_name)
     if rep_name and any(w in NOT_PERSON_WORDS or w.lower() in ORG_WORDS for w in rep_name.split()):
         rep_name = None
     firm = fx.search(r"adres\s+do\s+korespondencji\s*:?\s*(.+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|,\s*\d{2}-\d{3}|\n\s*tel)", body, re.I | re.S)
@@ -300,7 +304,7 @@ def split_members(block: str) -> list[tuple[str, str]]:
 @extractor("appellants")
 def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | None]:
     """Extract the appellant (or consortium leader) with its attorney details."""
-    found = party_block(ctx.text, spec.get("label", r"Odwołując\w*"), spec.get("stop", PARTY_STOP))
+    found = party_block(ctx.text, spec.get("label", r"(?:[^\n]{0,60}?\(\s*)?Odwołując\w*\s*\)?(?=\s*:)"), spec.get("stop", PARTY_STOP))
     if not found:
         return None, None
     block, start = found
@@ -330,7 +334,7 @@ def extract_appellants(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidenc
 @extractor("contracting_authorities")
 def extract_contracting_authorities(ctx: Context, spec: dict[str, Any]) -> tuple[Any, Evidence | None]:
     """Extract one or more contracting authorities, marking the one conducting a joint procedure."""
-    found = party_block(ctx.text, spec.get("label", r"Zamawiając\w*"), spec.get("stop", PARTY_STOP))
+    found = party_block(ctx.text, spec.get("label", r"(?:[^\n]{0,60}?\(\s*)?Zamawiając\w*\s*\)?(?=\s*[:(])"), spec.get("stop", PARTY_STOP))
     if not found:
         return None, None
     block, start = found

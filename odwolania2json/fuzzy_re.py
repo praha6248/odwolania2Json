@@ -33,7 +33,7 @@ def fold(text: str) -> str:
 
 
 def fold_pattern(pattern: str) -> str:
-    """Fold a regex pattern; 'ł' also accepts letters OCR commonly reads instead of it (t, f, h, 1, |)."""
+    """Fold a regex pattern; 'ł' also accepts OCR look-alikes (t, f, h, 1, |) and a space matches any whitespace run."""
     out = []
     in_class = False
     escaped = False
@@ -57,8 +57,16 @@ def fold_pattern(pattern: str) -> str:
         elif char in "łŁ":
             out.append("[lLtfh1|]")
             continue
+        elif char == " ":
+            out.append(r"\s+")
+            continue
         out.append(_fold_char(char))
-    return "".join(out)
+    return _fix_quantified_spaces("".join(out))
+
+
+def _fix_quantified_spaces(pattern: str) -> str:
+    """Keep explicit quantifiers on a space working after it was widened to \\s+ (e.g. ' ?' -> \\s*)."""
+    return pattern.replace(r"\s+?", r"\s*").replace(r"\s+*", r"\s*").replace(r"\s++", r"\s+")
 
 
 @lru_cache(maxsize=2048)
