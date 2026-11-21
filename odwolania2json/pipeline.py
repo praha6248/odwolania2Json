@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import extractors
 from .classifier import Classification, classify
 from .config import Settings, load_settings
 from .engine import extract

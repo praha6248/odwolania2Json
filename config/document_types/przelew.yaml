@@ -95,3 +95,6 @@ template:
     numer_transakcji: $numer_transakcji
     tytul: $tytul
     z_rachunku: $z_rachunku
+
+llm:
+  fields: [data_operacji, kwota, na_rachunek, z_rachunku, numer_transakcji, tytul]

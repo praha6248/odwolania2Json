@@ -8,10 +8,12 @@ import re
 import urllib.request
 from typing import Any
 
+from . import normalizers
 from .config import DocumentType
-from .engine import Context, Evidence, FieldResult
+from .engine import Context, Evidence, FieldResult, render, run_field
 
 log = logging.getLogger("odwolania2json.llm")
+DERIVED = {"map", "ref", "present", "const"}
 
 
 class LLMClient:
@@ -64,16 +66,16 @@ class LLMClient:
         except Exception as exc:
             log.warning("LLM refinement failed: %s", exc)
             return data
-        values = {name: result.value for name, result in ctx.results.items()}
         for name in targets:
-            value = answer.get(name)
-            if value in (None, "", []):
-                continue
-            ctx.results[name] = FieldResult(name, value, Evidence("llm"), source="llm")
-            values[name] = value
-        from .engine import render
-
-        return render(doc_type.template, values)
+            value = normalizers.apply(doc_type.fields.get(name, {}).get("normalize"), answer.get(name))
+            if value not in (None, "", []):
+                ctx.results[name] = FieldResult(name, value, Evidence("llm"), source="llm")
+        for name, spec in doc_type.fields.items():
+            chain = spec.get("extract") or []
+            derived = all(step.get("type") in DERIVED for step in (chain if isinstance(chain, list) else [chain]))
+            if chain and derived and ctx.value(name) in (None, "", []):
+                ctx.results[name] = run_field(ctx, name, spec)
+        return render(doc_type.template, {name: result.value for name, result in ctx.results.items()})
 
 
 def _strip_fences(text: str) -> str:

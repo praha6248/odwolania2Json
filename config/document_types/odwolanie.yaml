@@ -66,7 +66,12 @@ fields:
         pattern: '((?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4}))'
 
   czynnosc_powod_id:
-    description: Reason id 1-12 of the challenged act, based only on the first charge.
+    description: >-
+      Reason id 1-12 of the challenged act, based only on the first charge. 1 odrzucenie oferty, 2 wybór oferty,
+      3 wykluczenie wykonawcy, 4 publikacja SWZ, 5 modyfikacja SWZ, 6 odpowiedzi i wyjaśnienia do SWZ,
+      7 zaniechanie odrzucenia oferty, 8 zaniechanie wykluczenia, 9 unieważnienie postępowania,
+      10 zaniechanie unieważnienia, 11 opis przedmiotu zamówienia, 12 inna czynność.
+    normalize: [int]
     extract:
       - type: keyword_map
         scope: [first_act_item, first_act_sentence]
@@ -172,3 +177,6 @@ template:
     numer_postepowania: $numer_postepowania
     numer_ted: $numer_ted
     tytul: $tytul
+
+llm:
+  fields: [data, miejscowosc, czynnosc_dzien, czynnosc_powod_id, numer_postepowania, numer_bzp, numer_ted, tytul, odwolujacy, zamawiajacy]
