@@ -22,6 +22,9 @@ for package in ("rapidocr", "onnxruntime", "pypdfium2", "pypdfium2_raw", "morfeu
     datas += package_datas
     binaries += package_binaries
     hiddenimports += package_hidden
+if sys.platform == "win32":
+    hiddenimports += ["webview.platforms.winforms", "webview.platforms.edgechromium"]
+    datas += collect_data_files("webview", includes=["js/**", "lib/**"])
 hiddenimports += collect_submodules("uvicorn")
 datas += collect_data_files("wordfreq")
 

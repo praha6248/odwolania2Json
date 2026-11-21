@@ -79,8 +79,15 @@ def main() -> int:
         import webview
 
         webview.create_window("Odwołania2JSON", url, width=1440, height=900, min_size=(960, 640))
+        webview.settings["ALLOW_DOWNLOADS"] = True
         webview.start()
-    except Exception:
+    except Exception as error:
+        if sys.platform == "win32" and getattr(sys, "frozen", False):
+            import ctypes
+
+            server.should_exit = True
+            ctypes.windll.user32.MessageBoxW(0, f"Sprawdź instalację Microsoft Edge WebView2.\n{error}", "Odwołania2JSON", 16)
+            return 1
         webbrowser.open(url)
         print(f"Odwołania2JSON działa pod adresem {url} (Ctrl+C kończy pracę)")
         try:
