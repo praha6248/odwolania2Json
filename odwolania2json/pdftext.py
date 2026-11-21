@@ -57,6 +57,26 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
+def restore_municipal_heading(text: str, addresses: dict[str, set[str]]) -> str:
+    """Recover missing accents in an OCR municipality heading from the same postal address."""
+    def restore(match: re.Match[str]) -> str:
+        city = match["city"]
+        candidates = set()
+        for name in addresses.get(match["code"], set()):
+            if fold(city).casefold() != fold(name).casefold():
+                continue
+            # Only add accents to otherwise identical letters. Preserve the heading's case.
+            if any(a.casefold() != b.casefold() and a != fold(a) for a, b in zip(city, name)):
+                continue
+            candidates.add("".join(b.upper() if a.isupper() else b.lower() for a, b in zip(city, name)))
+        accented = {v for v in candidates if v != city}
+        if len(accented) != 1:
+            return match[0]
+        return match["prefix"] + accented.pop() + match["address"]
+
+    return re.sub(r"(?im)^(?P<prefix>Gmina[ \t]+)(?P<city>[^\n,;:]{2,65})(?P<address>\n[^\n]{0,100}?(?:\n)?(?P<code>\d{2}-\d{3})\b)", restore, text)
+
+
 def extract_text(path: str | Path, ocr: dict[str, Any] | None = None) -> DocumentText:
     """Read a PDF and return cleaned text per page, running OCR on pages without a usable text layer."""
     path = Path(path)
@@ -76,6 +96,11 @@ def extract_text(path: str | Path, ocr: dict[str, Any] | None = None) -> Documen
     texts, engine = ocr_pages(path, missing, ocr)
     for index, text in texts.items():
         doc.pages[index] = clean_text(text)
+    addresses: dict[str, set[str]] = {}
+    for code, city in re.findall(r"(?m)\b(\d{2}-\d{3})[ \t]+([^\W\d_]+(?:[ -][^\W\d_]+)*)[ \t]*$", doc.text):
+        addresses.setdefault(code, set()).add(city)
+    for index in texts:
+        doc.pages[index] = restore_municipal_heading(doc.pages[index], addresses)
     doc.ocr_pages = sorted(texts)
     doc.ocr_engine = engine
     return doc

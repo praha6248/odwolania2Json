@@ -81,7 +81,7 @@ fields:
         pattern: 'w kwocie\s+([\d][\d \.,]*\d)'
 
   z_rachunku:
-    description: Numer rachunku nadawcy, same cyfry bez PL i spacji (26 cyfr).
+    description: Numer rachunku nadawcy, 26 cyfr bez spacji, z prefiksem PL tylko gdy widnieje w dokumencie.
     normalize: [account]
     extract:
       - type: label
@@ -90,11 +90,11 @@ fields:
       - type: regex
         pattern: 'z rachunku(?: nr)?\s*((?:PL)?\s?\d{2}(?:\s?\d{4}){6})'
       - type: regex
-        pattern: '(?<!\d)((?:PL)?\d{2}(?: ?\d{4}){6})(?!\d)'
+        pattern: '(?<!\d)((?:PL\s*)?\d{2}(?: ?\d{4}){6})(?!\d)'
         occurrence: 0
 
   na_rachunek:
-    description: Numer rachunku odbiorcy, same cyfry bez PL i spacji (26 cyfr).
+    description: Numer rachunku odbiorcy, 26 cyfr bez spacji, z prefiksem PL tylko gdy widnieje w dokumencie.
     normalize: [account]
     extract:
       - type: label
@@ -103,7 +103,7 @@ fields:
       - type: regex
         pattern: 'na rachunek(?: nr)?\s*((?:PL)?\s?\d{2}(?:\s?\d{4}){6})'
       - type: regex
-        pattern: '(?<!\d)((?:PL)?\d{2}(?: ?\d{4}){6})(?!\d)'
+        pattern: '(?<!\d)((?:PL\s*)?\d{2}(?: ?\d{4}){6})(?!\d)'
         occurrence: 1
 
   numer_transakcji:
