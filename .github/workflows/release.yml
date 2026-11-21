@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           pip install -r requirements.txt pyinstaller
-          if [ "$RUNNER_OS" = "Windows" ]; then pip install pywebview || echo "pywebview unavailable, the app will open in the browser"; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then pip install pywebview; fi
       - name: Ensure Inno Setup
         if: runner.os == 'Windows'
         shell: pwsh

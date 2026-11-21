@@ -128,7 +128,7 @@ async function applyRoute() {
 /** Switch between views. */
 function go(view) {
   if (view === "detail" && !state.current) {
-    if (!state.docs.length) return toast("Najpierw dodaj dokument");
+    if (!state.docs.length) return $("#document-required").showModal();
     return openDoc(state.docs[0].id);
   }
   state.view = view;
@@ -1092,6 +1092,7 @@ async function deleteDoc(id) {
 
 /** Wire up event handlers. */
 function bind() {
+  $("#document-required").addEventListener("cancel", event => event.preventDefault());
   document.addEventListener("click", (e) => {
     const target = e.target.closest("[data-go]");
     if (target) { e.preventDefault(); go(target.dataset.go); }
