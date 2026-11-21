@@ -40,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--strict", action="store_true", help="require exact matches for long strings")
     ev.add_argument("--llm", action=argparse.BooleanOptionalAction, default=None)
 
+    chk = sub.add_parser("check", help="run the formal checks of config/formal_checks.yaml for every case folder")
+    chk.add_argument("input", type=Path, nargs="?", default=ROOT / "input")
+    chk.add_argument("--json", action="store_true", help="print the results as JSON")
+
     serve = sub.add_parser("serve", help="start the web interface")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
@@ -53,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point; defaults to the 'run' command when no subcommand is given."""
     parser = build_parser()
     argv = sys.argv[1:] if argv is None else argv
-    if not any(a in {"run", "extract", "eval", "serve", "types", "llm-check"} for a in argv) and not any(a in {"-h", "--help", "--version"} for a in argv):
+    if not any(a in {"run", "extract", "eval", "check", "serve", "types", "llm-check"} for a in argv) and not any(a in {"-h", "--help", "--version"} for a in argv):
         argv = [*argv, "run"]
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")
@@ -117,6 +121,27 @@ def main(argv: list[str] | None = None) -> int:
         if result.data is None:
             print(result.message, file=sys.stderr)
             return 2
+        return 0
+
+    if args.command == "check":
+        from .formal import run_checks, summary
+
+        icons = {"ok": "OK", "warn": "UWAGA", "error": "BŁĄD", "skip": "--"}
+        report = {}
+        for folder in sorted({p.parent for p in args.input.rglob("*.pdf")}):
+            documents = []
+            for pdf in sorted(folder.glob("*.pdf")):
+                result = processor.process_pdf(pdf)
+                documents.append({"doc_type": result.doc_type, "data": result.data})
+            results = run_checks(settings.formal_checks, documents)
+            report[str(folder.relative_to(args.input)) or "."] = {"formal": summary(results), "checks": results}
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 0
+        for name, case in report.items():
+            print(f"{name}: {icons[case['formal']]}")
+            for item in case["checks"]:
+                print(f"  {icons[item['status']]:<6}{item['label']}: {item['detail']}")
         return 0
 
     if args.command == "eval":

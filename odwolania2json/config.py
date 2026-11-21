@@ -38,6 +38,7 @@ class Settings:
     ocr: dict[str, Any] = field(default_factory=dict)
     plugins: list[str] = field(default_factory=lambda: ["odwolania2json.extractors"])
     document_types: list[DocumentType] = field(default_factory=list)
+    formal_checks: list[dict[str, Any]] = field(default_factory=list)
 
     def get_type(self, name: str) -> DocumentType | None:
         """Return the document type with the given name, if configured."""
@@ -112,6 +113,8 @@ def load_settings(config_dir: str | Path | None = None) -> Settings:
     for module in plugins:
         importlib.import_module(module)
     types = [load_document_type(p) for p in sorted((config_dir / "document_types").glob("*.y*ml"))]
+    checks_file = config_dir / "formal_checks.yaml"
+    checks = (yaml.safe_load(checks_file.read_text(encoding="utf-8")) or {}).get("checks") or [] if checks_file.exists() else []
     return Settings(
         min_classification_score=float(raw.get("min_classification_score", 3.0)),
         unmatched_output=str(raw.get("unmatched_output", "empty_json")),
@@ -119,4 +122,5 @@ def load_settings(config_dir: str | Path | None = None) -> Settings:
         ocr=dict(raw.get("ocr", {}) or {}),
         plugins=plugins,
         document_types=types,
+        formal_checks=list(checks),
     )

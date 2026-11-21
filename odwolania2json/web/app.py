@@ -286,7 +286,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
     @app.get("/api/cases")
     def cases() -> list[dict[str, Any]]:
         """Group uploaded documents into cases by procurement reference and check party consistency."""
-        return group_cases([i["result"] for i in store.items.values() if "result" in i])
+        return group_cases([i["result"] for i in store.items.values() if "result" in i], state["settings"].formal_checks)
 
     @app.delete("/api/documents/{doc_id}")
     def delete(doc_id: str) -> dict[str, str]:

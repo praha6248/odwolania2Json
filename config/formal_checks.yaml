@@ -1,0 +1,47 @@
+# Formal checks of a complete case (appeal, power of attorney, transfer), shown in the Sprawy view.
+# Paths use the output JSON of a type: "<type>:<path>", where "name[]" walks over a list.
+# Kinds: same, contains, mentions, date_order, deadline, min_amount. Remove or add entries to change the checks.
+
+checks:
+  - id: strony
+    label: Odwołujący jest mocodawcą pełnomocnictwa
+    kind: same
+    left: odwolanie:Odwolujacy[].nazwa
+    right: pelnomocnictwo:mocodawca[].data.nazwa
+
+  - id: pelnomocnik
+    label: Pełnomocnik z odwołania ma pełnomocnictwo
+    kind: contains
+    item: odwolanie:Odwolujacy[].pelnomocnik.imie_nazwisko
+    within: pelnomocnictwo:pelnomocnicy[].imie_nazwisko
+
+  - id: tytul_przelewu
+    label: Tytuł przelewu wskazuje postępowanie
+    kind: mentions
+    text: przelew:przelew_bankowy.tytul
+    value: odwolanie:ZamowieniePubliczne.numer_postepowania
+
+  - id: oplata_przed_odwolaniem
+    label: Opłata uiszczona najpóźniej w dniu odwołania
+    kind: date_order
+    earlier: przelew:przelew_bankowy.data_operacji
+    later: odwolanie:OdwolanieKIO.data
+
+  - id: oplata_skarbowa
+    label: Opłata skarbowa od pełnomocnictwa
+    kind: min_amount
+    amount: przelew:przelew_bankowy.kwota
+    per_item: 17
+    count: pelnomocnictwo:pelnomocnicy[]
+    unit: pełnomocnika
+
+  - id: termin
+    label: Termin na wniesienie odwołania (art. 515 Pzp)
+    kind: deadline
+    start: odwolanie:OdwolanieKIO.czynnosc_dzien
+    end: odwolanie:OdwolanieKIO.data
+    days: 5
+    days_if:
+      present: odwolanie:ZamowieniePubliczne.numer_ted
+      days: 10
+    note: Termin liczony od daty czynności; gdy ostatni dzień wypada w sobotę lub święto, przesuwa się na następny dzień roboczy. Sprawdź datę przesłania informacji i wniesienia odwołania.
