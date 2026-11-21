@@ -1,10 +1,14 @@
 min_classification_score: 5
 
+# Documents outside the configured types: 'empty_json' writes {} (UZP: an empty JSON is a file with {}), 'skip' writes nothing.
+unmatched_output: empty_json
+
 plugins:
   - odwolania2json.extractors
 
 llm:
   enabled: false
+  mode: fast
   base_url: http://localhost:11434/v1
   model: hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0
   api_key: ""

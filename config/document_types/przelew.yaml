@@ -38,6 +38,7 @@ classify:
 
 fields:
   data_operacji:
+    description: Data wykonania operacji (ISO YYYY-MM-DD).
     normalize: [date_iso]
     extract:
       - type: label
@@ -49,6 +50,7 @@ fields:
         pattern: '(?:zrealizowan\w+|wykonan\w+)\s+(\d[\d./\-]+\d|\d{1,2} \w+ \d{4})'
 
   kwota:
+    description: Kwota przelewu jako liczba (np. 7500.0).
     normalize: [amount]
     extract:
       - type: label
@@ -58,6 +60,7 @@ fields:
         pattern: 'w kwocie\s+([\d][\d \.,]*\d)'
 
   z_rachunku:
+    description: Numer rachunku nadawcy, same cyfry bez PL i spacji (26 cyfr).
     normalize: [account]
     extract:
       - type: label
@@ -70,6 +73,7 @@ fields:
         occurrence: 0
 
   na_rachunek:
+    description: Numer rachunku odbiorcy, same cyfry bez PL i spacji (26 cyfr).
     normalize: [account]
     extract:
       - type: label
@@ -82,6 +86,8 @@ fields:
         occurrence: 1
 
   numer_transakcji:
+    optional: true
+    description: Numer referencyjny / identyfikator operacji, jeśli występuje.
     normalize: [strip]
     extract:
       - type: label
@@ -93,12 +99,35 @@ fields:
         ignore_case: false
 
   tytul:
+    description: Pełny tytuł przelewu.
     normalize: [strip_quotes, strip]
     extract:
       - type: label
         labels: ["Tytuł przelewu", "Tytułem", "Tytuł", "Opis"]
         until: '\n(?:Numer|Nr |Status|Identyfikator|Typ |Kanał|Opłata|Data|Kwota|Rachunek|Waluta|Tryb|ZREALIZOWANO|Potwierdzenie|Z poważaniem|Dokument|Bank |W razie|Referencje|Wartość|NR REF|STATUS|TRYB|WALUTA|GODZ)|”\.?|"\.'
         max_chars: 300
+
+  platnik:
+    optional: true
+    description: Nazwa zleceniodawcy przelewu (pole pomocnicze, poza JSON).
+    normalize: [strip]
+    extract:
+      - type: label
+        labels: ["Nazwa zleceniodawcy", "Zleceniodawca", "Płatnik", "Nadawca", "Dane nadawcy"]
+        value: '[^\n,]+'
+      - type: regex
+        pattern: 'prowadzonego\s+dla\s+([^,\n]+)'
+
+  numer_postepowania:
+    optional: true
+    description: Numer postępowania z tytułu przelewu (pole pomocnicze, poza JSON).
+    extract:
+      - type: regex
+        pattern: '(?:w\s+przetargu|postępowani\w*\s+nr|nr\s+postępowania)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+
+case:
+  party: platnik
+  reference: numer_postepowania
 
 template:
   przelew_bankowy:

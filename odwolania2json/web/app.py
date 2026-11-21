@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
 from ..config import load_settings
+from ..cases import case_values, group_cases
 from ..pipeline import DocumentResult, Processor
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -51,8 +52,9 @@ class Store:
             shutil.rmtree(item["path"].parent, ignore_errors=True)
 
 
-def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, str]) -> dict[str, Any]:
+def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, str], case_spec: dict[str, str] | None = None) -> dict[str, Any]:
     """Build the API representation of a processed document."""
+    values = {f["field"]: f["value"] for f in result.fields}
     return {
         "id": doc_id,
         "filename": result.path.name,
@@ -60,6 +62,7 @@ def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, st
         "doc_label": settings_labels.get(result.doc_type or "", "Nierozpoznany"),
         "data": result.data,
         "fields": result.fields,
+        "case_values": case_values(case_spec or {}, values),
         "classification": result.trace()["classification"],
         "seconds": round(result.seconds, 3),
         "error": result.error,
@@ -81,6 +84,20 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         """Map document type names to human readable labels."""
         return {t.name: t.label for t in state["settings"].document_types}
 
+    def remember(doc_id: str, result: DocumentResult) -> None:
+        """Store the serialized result and the extraction context needed for manual corrections."""
+        doc_type = state["settings"].get_type(result.doc_type) if result.doc_type else None
+        store.items[doc_id]["result"] = serialize(doc_id, result, labels(), doc_type.case if doc_type else None)
+        store.items[doc_id]["context"] = getattr(state["processor"], "last_context", None) if doc_type else None
+
+    def llm_client():
+        """Return an LLM client for the current settings or fail with a clear message."""
+        from ..llm import LLMClient
+
+        if not state["settings"].llm.get("base_url"):
+            raise HTTPException(status_code=400, detail="Skonfiguruj model językowy w Ustawieniach.")
+        return LLMClient(state["settings"].llm)
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         """Serve the single page application."""
@@ -95,7 +112,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             "llm": bool(state["processor"].llm),
             "llm_model": settings.llm.get("model") if state["processor"].llm else None,
             "types": [
-                {"name": t.name, "label": t.label, "fields": list(t.fields), "source": t.source.name if t.source else None}
+                {"name": t.name, "label": t.label, "fields": list(t.fields), "optional": [n for n, spec in t.fields.items() if (spec or {}).get("optional")], "source": t.source.name if t.source else None}
                 for t in settings.document_types
             ],
         }
@@ -132,6 +149,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         cfg = state["settings"].llm
         return {
             "enabled": bool(state["processor"].llm),
+            "mode": cfg.get("mode", "fast"),
             "base_url": cfg.get("base_url", ""),
             "model": cfg.get("model", ""),
             "has_key": bool(cfg.get("api_key")),
@@ -152,11 +170,13 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
         if isinstance(body.get("api_key"), str) and body["api_key"]:
             cfg["api_key"] = body["api_key"]
         cfg["enabled"] = bool(body.get("enabled", cfg.get("enabled", False)))
+        if body.get("mode") in ("fast", "accurate"):
+            cfg["mode"] = body["mode"]
         state["processor"] = Processor(state["settings"])
         if body.get("persist"):
             from ..config import save_env
 
-            updates = {"O2J_LLM_ENABLED": str(cfg["enabled"]).lower(), "O2J_LLM_URL": cfg.get("base_url", ""), "O2J_LLM_MODEL": cfg.get("model", "")}
+            updates = {"O2J_LLM_ENABLED": str(cfg["enabled"]).lower(), "O2J_LLM_URL": cfg.get("base_url", ""), "O2J_LLM_MODEL": cfg.get("model", ""), "O2J_LLM_MODE": cfg.get("mode", "fast")}
             if body.get("api_key"):
                 updates["O2J_LLM_API_KEY"] = body["api_key"]
             save_env(updates)
@@ -189,7 +209,7 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
                 continue
             doc_id, path = store.add(upload_file.filename or "document.pdf", await upload_file.read())
             result = state["processor"].process_pdf(path)
-            store.items[doc_id]["result"] = serialize(doc_id, result, labels())
+            remember(doc_id, result)
             out.append(store.items[doc_id]["result"])
         return out
 
@@ -213,10 +233,60 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
             doc_type = item["result"]["doc_type"]
         try:
             result = state["processor"].process_pdf(item["path"], doc_type, llm)
+            remember(doc_id, result)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"LLM: {exc}") from exc
-        item["result"] = serialize(doc_id, result, labels())
         return item["result"]
+
+    @app.put("/api/documents/{doc_id}/fields/{name}")
+    def set_field(doc_id: str, name: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Manually correct (or confirm as empty) one field and re-render the output JSON."""
+        from ..engine import rerender
+
+        item = store.get(doc_id)
+        ctx = item.get("context")
+        doc_type = state["settings"].get_type(item["result"].get("doc_type") or "")
+        if ctx is None or doc_type is None or name not in doc_type.fields:
+            raise HTTPException(status_code=400, detail="To pole nie może być edytowane.")
+        data = rerender(doc_type, ctx, {name: body.get("value")})
+        fields = [r.to_dict() for r in ctx.results.values()]
+        item["result"].update({"data": data, "fields": fields, "case_values": case_values(doc_type.case, {f["field"]: f["value"] for f in fields})})
+        return item["result"]
+
+    @app.post("/api/documents/{doc_id}/summary")
+    def summary(doc_id: str) -> dict[str, Any]:
+        """Summarize one document with the configured LLM (accurate mode feature)."""
+        from ..assistant import summarize
+
+        result = store.get(doc_id)["result"]
+        try:
+            return summarize(llm_client(), result)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"LLM: {exc}") from exc
+
+    @app.post("/api/ask")
+    def ask_documents(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Answer a question about the uploaded documents with retrieval over their text (RAG)."""
+        from ..assistant import ask
+
+        question = str(body.get("question") or "").strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Wpisz pytanie.")
+        ids = body.get("doc_ids") or list(store.items)
+        documents = [store.items[i]["result"] for i in ids if i in store.items and "result" in store.items[i]]
+        try:
+            return ask(llm_client(), question, documents)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"LLM: {exc}") from exc
+
+    @app.get("/api/cases")
+    def cases() -> list[dict[str, Any]]:
+        """Group uploaded documents into cases by procurement reference and check party consistency."""
+        return group_cases([i["result"] for i in store.items.values() if "result" in i])
 
     @app.delete("/api/documents/{doc_id}")
     def delete(doc_id: str) -> dict[str, str]:
@@ -234,11 +304,9 @@ def create_app(config_dir: str | Path | None = None) -> FastAPI:
     def download(doc_id: str) -> Response:
         """Download the output JSON named after the source PDF."""
         result = store.get(doc_id)["result"]
-        if result["data"] is None:
-            return JSONResponse({"detail": result["message"]}, status_code=422)
         name = Path(result["filename"]).with_suffix(".json").name
         return Response(
-            json.dumps(result["data"], ensure_ascii=False, indent=2),
+            json.dumps(result["data"] if result["data"] is not None else {}, ensure_ascii=False, indent=2),
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )

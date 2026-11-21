@@ -43,14 +43,16 @@ def test_output_keys_match_reference_exactly(processor, pdf_name):
 
 
 def test_document_outside_known_types_gets_no_json(processor, tmp_path):
-    """A TED notice is reported as unmatched and no JSON file is written."""
+    """A TED notice is reported as unmatched and gets an empty JSON object, as UZP specifies."""
     result = processor.process_pdf(NEGATIVE)
     assert result.doc_type is None and result.data is None
     assert "Nie udało się dopasować typu" in result.message
     (tmp_path / "input" / "case1").mkdir(parents=True)
     (tmp_path / "input" / "case1" / NEGATIVE.name).write_bytes(NEGATIVE.read_bytes())
     processor.process_tree(tmp_path / "input", tmp_path / "output")
-    assert not list((tmp_path / "output").rglob("*.json"))
+    written = list((tmp_path / "output").rglob("*.json"))
+    assert [p.name for p in written] == ["negatywny_przyklad.json"]
+    assert json.loads(written[0].read_text(encoding="utf-8")) == {}
 
 
 def test_cli_extract_reports_unmatched_type():

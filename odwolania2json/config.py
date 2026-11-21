@@ -24,6 +24,7 @@ class DocumentType:
     fields: dict[str, dict[str, Any]]
     template: Any
     llm: dict[str, Any] = field(default_factory=dict)
+    case: dict[str, str] = field(default_factory=dict)
     source: Path | None = None
 
 
@@ -32,6 +33,7 @@ class Settings:
     """Global application settings."""
 
     min_classification_score: float = 3.0
+    unmatched_output: str = "empty_json"
     llm: dict[str, Any] = field(default_factory=dict)
     ocr: dict[str, Any] = field(default_factory=dict)
     plugins: list[str] = field(default_factory=lambda: ["odwolania2json.extractors"])
@@ -56,6 +58,7 @@ def load_document_type(path: Path) -> DocumentType:
         fields=data["fields"],
         template=data["template"],
         llm=data.get("llm", {}) or {},
+        case=data.get("case", {}) or {},
         source=path,
     )
 
@@ -100,7 +103,7 @@ def load_settings(config_dir: str | Path | None = None) -> Settings:
     raw = yaml.safe_load(settings_file.read_text(encoding="utf-8")) if settings_file.exists() else {}
     raw = raw or {}
     llm = dict(raw.get("llm", {}) or {})
-    for key, env in (("base_url", "O2J_LLM_URL"), ("model", "O2J_LLM_MODEL"), ("api_key", "O2J_LLM_API_KEY")):
+    for key, env in (("base_url", "O2J_LLM_URL"), ("model", "O2J_LLM_MODEL"), ("api_key", "O2J_LLM_API_KEY"), ("mode", "O2J_LLM_MODE")):
         if os.environ.get(env):
             llm[key] = os.environ[env]
     if os.environ.get("O2J_LLM_ENABLED"):
@@ -111,6 +114,7 @@ def load_settings(config_dir: str | Path | None = None) -> Settings:
     types = [load_document_type(p) for p in sorted((config_dir / "document_types").glob("*.y*ml"))]
     return Settings(
         min_classification_score=float(raw.get("min_classification_score", 3.0)),
+        unmatched_output=str(raw.get("unmatched_output", "empty_json")),
         llm=llm,
         ocr=dict(raw.get("ocr", {}) or {}),
         plugins=plugins,

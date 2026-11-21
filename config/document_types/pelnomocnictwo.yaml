@@ -32,16 +32,30 @@ classify:
 
 fields:
   mocodawca:
+    example: '[{"data": {"imie_nazwisko": null, "krs": "0000123456", "nazwa": "Firma S.A.", "nip": "1234567890", "typ": "osoba_prawna"}, "podpisujacy": [{"imie_nazwisko": "Jan Kowalski"}]}]'
     description: Principals granting the power of attorney, with signatories.
     default: []
     extract:
       - type: principals
 
   pelnomocnicy:
+    example: '[{"imie_nazwisko": "Anna Nowak", "pesel": null}]'
     description: Attorneys receiving the power of attorney (name in nominative, PESEL if given).
     default: []
     extract:
       - type: attorneys
+
+  numer_postepowania:
+    optional: true
+    description: Numer postępowania, którego dotyczy pełnomocnictwo (pole pomocnicze, poza JSON).
+    normalize: [strip]
+    extract:
+      - type: regex
+        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+sprawy|(?:numer|nr)\s+postępowania|postępowani\w*\s+nr)\s*:?\s*([A-Za-z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+
+case:
+  party: mocodawca[].data.nazwa
+  reference: numer_postepowania
 
 template:
   mocodawca: $mocodawca

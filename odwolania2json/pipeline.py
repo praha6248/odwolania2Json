@@ -89,7 +89,9 @@ class Processor:
         data, ctx = extract(text, doc_type)
         llm = self.llm_for(use_llm)
         if llm is not None:
-            data = llm.refine(doc_type, text, data, ctx)
+            accurate = self.settings.llm.get("mode", "fast") == "accurate"
+            data = (llm.verify if accurate else llm.refine)(doc_type, text, data, ctx)
+        self.last_context = ctx
         fields = [r.to_dict() for r in ctx.results.values()]
         return DocumentResult(path, doc_type.name, cls, data, fields, text, time.perf_counter() - started)
 
@@ -118,6 +120,8 @@ class Processor:
             relative = pdf.relative_to(input_dir).with_suffix(".json")
             if result.data is not None:
                 write_json(output_dir / relative, result.data)
+            elif self.settings.unmatched_output == "empty_json" and result.error is None:
+                write_json(output_dir / relative, {})
             if trace_dir is not None:
                 write_json(Path(trace_dir) / relative.with_suffix(".trace.json"), result.trace())
             if result.data is None:

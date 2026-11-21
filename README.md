@@ -56,6 +56,15 @@ python -m odwolania2json serve        # http://127.0.0.1:8000
 - **Dokumenty:** kafelki KPI, filtr typu, tabela z kompletnością pól i eksportem.
 - **Szczegół:** podgląd PDF obok JSON; zakładka *Źródła* pokazuje metodę i fragment tekstu dla każdego pola, a kliknięcie podświetla go w tekście dokumentu; *Klasyfikacja* pokazuje punktację typów.
 
+### Tryby pracy
+
+- **Szybki** (domyślny): same reguły z YAML, bez sieci i bez LLM. Daje maksimum punktów za „moc modelu” w ocenie UZP.
+- **Dokładny** (opcjonalny, *Ustawienia*): reguły plus niezależna weryfikacja każdego pola przez otwarty LLM. Rozbieżności trafiają do zakładki *Weryfikacja*, gdzie można poprawić wartość, wybrać wartość LLM albo zatwierdzić puste pole. Do tego **streszczenie dokumentu** i **Asystent**: pytania o wszystkie wgrane dokumenty (RAG z BM25 na CPU), z odpowiedzią wyłącznie z odnalezionych fragmentów i z klikalnymi źródłami.
+
+**Sprawy:** dokumenty są automatycznie grupowane po numerze postępowania (sekcja `case:` w YAML). Interfejs pokazuje zgodność stron między odwołaniem, pełnomocnictwem i przelewem oraz brakujące dokumenty.
+
+**Dokumenty spoza puli** dostają pusty JSON `{}` i komunikat „nie udało się dopasować typu dokumentu” (`unmatched_output` w `settings.yaml`).
+
 ### Docker Compose
 
 ```bash
@@ -117,7 +126,14 @@ Model uzupełnia tylko pola wskazane w sekcji `llm.fields` danego typu, które r
 python -m odwolania2json eval <katalog dane/ z repozytorium UZP>
 ```
 
-Na 60 zestawach treningowych UZP (180 dokumentów) F1 wynosi 1.000, także w trybie `--strict`. Na symulowanych skanach (rasteryzacja 150 DPI, rozmycie, obrót) F1 wynosi ok. 0.92.
+| Zbiór | F1 |
+|---|---|
+| 60 zestawów treningowych UZP (180 dokumentów) | 1.000 |
+| 150 syntetycznych spraw z haczykami (`tools/generate_testset.py`) | 1.000 |
+| 12 dokumentów spoza puli UZP + 106 orzeczeń KIO + 5 innych pism | 100% odrzuconych |
+| symulowane skany (150 DPI, rozmycie, obrót) | ok. 0.97 |
+
+Same modele LLM bez reguł (`tools/eval_llm.py`, 16 spraw): Bielik-4.5B F1 0.78, Bielik-1.5B F1 0.47. Dlatego LLM służy tylko do weryfikacji i funkcji dodatkowych, a wynik JSON pochodzi z reguł.
 
 ## Rozwój
 
