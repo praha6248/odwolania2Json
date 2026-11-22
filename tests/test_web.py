@@ -92,3 +92,21 @@ def test_parallel_page_rendering_is_safe(monkeypatch):
     with ThreadPoolExecutor(8) as pool:
         codes = list(pool.map(lambda n: client.get(f"/api/documents/{doc['id']}/pages/{n}.png").status_code, range(1, pages + 1)))
     assert codes == [200] * pages
+
+
+def test_windowed_process_gets_streams_for_logging(tmp_path, monkeypatch):
+    """Without a console (sys.stdout is None) the launcher redirects output to a log file, so uvicorn can configure logging."""
+    import sys
+
+    import uvicorn
+
+    from odwolania2json.desktop import ensure_streams
+
+    monkeypatch.setenv("O2J_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    log = ensure_streams()
+    assert log == tmp_path / "odwolania2json.log" and sys.stdout is not None and sys.stderr is not None
+    uvicorn.Config(lambda scope: None, log_level="warning").configure_logging()
+    print("ok")
+    assert "ok" in log.read_text(encoding="utf-8")
