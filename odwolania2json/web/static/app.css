@@ -664,3 +664,7 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
 .link-btn { min-height: 36px; padding: 0 8px; color: #a8381a; font-size: 13px; }
 .btn.small { height: 34px; padding: 0 14px; font-size: 13px; }
 .review-context.missing { color: var(--muted); font-style: italic; }
+
+.answer-lines { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.answer-lines p { margin: 0; line-height: 1.5; }
+.answer-more { margin: 12px 0 6px; }

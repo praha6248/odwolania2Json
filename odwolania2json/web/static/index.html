@@ -187,12 +187,12 @@
     <section class="view hidden" id="view-assistant">
       <div class="page-head">
         <div><div class="crumbs">Sprawy KIO <span>/</span> Asystent</div><h1>Asystent dokumentów</h1>
-          <p class="muted lead">Wyszukaj frazę lub zadaj pytanie o wgrane dokumenty. Wyszukiwarka działa lokalnie bez modelu; z modelem językowym dostajesz też odpowiedź opartą wyłącznie na znalezionych fragmentach.</p></div>
+          <p class="muted lead">Wyszukaj frazę lub zadaj pytanie o wgrane dokumenty. Na typowe pytania (pełnomocnik, przelew, czynność, strony, postępowanie, daty) odpowiada od razu z odczytanych danych, bez modelu; pozostałe wyszukuje we fragmentach. Z modelem językowym odpowiada też na pytania swobodne.</p></div>
       </div>
       <div class="card assistant-card">
         <div class="llm-off-note hidden" id="assistant-off">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.01"/></svg>
-          <span>Model językowy jest wyłączony, więc pokazujemy najtrafniejsze fragmenty dokumentów. Odpowiedzi w zdaniach włączysz w <a href="#" data-go="settings">Ustawieniach</a>.</span>
+          <span>Model językowy jest wyłączony: na typowe pytania odpowiadamy z odczytanych danych, pozostałe wyszukujemy we fragmentach. Odpowiedzi na pytania swobodne włączysz w <a href="#" data-go="settings">Ustawieniach</a>.</span>
         </div>
         <form class="ask-form" id="ask-form">
           <label class="field ask-field"><span class="sr-only">Pytanie</span><input id="ask-input" placeholder="Np. pełnomocnik odwołującego, kwota przelewu, zarzuty" autocomplete="off"></label>
@@ -202,7 +202,7 @@
           <button type="button" class="chip neutral">Kto reprezentuje odwołującego?</button>
           <button type="button" class="chip neutral">Jakiej czynności zamawiającego dotyczy odwołanie?</button>
           <button type="button" class="chip neutral">Jaką kwotę i kiedy przelano?</button>
-          <button type="button" class="chip neutral">Czego żąda odwołujący?</button>
+          <button type="button" class="chip neutral">Kto jest zamawiającym?</button>
         </div>
         <div id="answers" aria-live="polite"></div>
       </div>

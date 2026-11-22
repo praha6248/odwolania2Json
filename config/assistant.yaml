@@ -1,0 +1,70 @@
+# Answers to typical questions without a language model, built from the extracted JSON of the uploaded documents.
+# keywords: regular expressions searched in the question (case and Polish accents are ignored); the intent with the
+#           most matching keywords wins, ties go to the one listed first.
+# answers:  one line per uploaded document of `type`; {Path} reads its output JSON ("name[]" walks over a list, several
+#           values are joined with commas), "|zl" formats an amount and "|data" a date; missing values show as "—".
+# sources:  extraction fields whose source fragment is listed under the answer (click opens it in the document).
+# search_only: words that mark a question about the content of a letter (charges, requests, legal grounds); such
+#           questions skip the templates and go straight to the fragment search.
+
+search_only: ['zarzut', 'naruszen', '\bart\.?\s*\d', 'ż[aą]d', 'uzasadni', 'wnosi\w*\s+o\b', 'argument', 'dlaczego']
+
+intents:
+  - id: pelnomocnik
+    keywords: ['reprezent', 'pe[lł]nomocnik', 'adwokat', 'radc[ay]', 'kancelari']
+    answers:
+      - type: odwolanie
+        text: 'Odwołującego {Odwolujacy[].nazwa} reprezentuje {Odwolujacy[].pelnomocnik.imie_nazwisko} ({Odwolujacy[].pelnomocnik.nazwa}), e-mail: {Odwolujacy[].pelnomocnik.mail}.'
+        sources: [odwolujacy]
+      - type: pelnomocnictwo
+        text: 'Pełnomocnictwa od {mocodawca[].data.nazwa} udzielono: {pelnomocnicy[].imie_nazwisko}.'
+        sources: [pelnomocnicy]
+
+  - id: przelew
+    keywords: ['przel', 'kwot', 'op[lł]at', 'zap[lł]ac', 'wp[lł]at', 'rachun', 'ile ']
+    answers:
+      - type: przelew
+        text: 'Przelew {przelew_bankowy.kwota|zl} z dnia {przelew_bankowy.data_operacji|data}, z rachunku {przelew_bankowy.z_rachunku} na rachunek {przelew_bankowy.na_rachunek}, tytuł: „{przelew_bankowy.tytul}”.'
+        sources: [kwota, data_operacji, tytul]
+
+  - id: czynnosc
+    keywords: ['czynno', 'zaskar', 'czego dotyczy', 'pow[oó]d', 'przeciw']
+    answers:
+      - type: odwolanie
+        text: 'Odwołanie dotyczy czynności: {OdwolanieKIO.czynnosc_opis}, z dnia {OdwolanieKIO.czynnosc_dzien|data}.'
+        sources: [czynnosc_opis, czynnosc_dzien]
+
+  - id: zamawiajacy
+    keywords: ['zamawiaj']
+    answers:
+      - type: odwolanie
+        text: 'Zamawiający: {Zamawiajacy[].nazwa} (NIP {Zamawiajacy[].nip}).'
+        sources: [zamawiajacy]
+
+  - id: odwolujacy
+    keywords: ['odwo[lł]uj', 'kto wni', 'wykonawc']
+    answers:
+      - type: odwolanie
+        text: 'Odwołujący: {Odwolujacy[].nazwa} (KRS {Odwolujacy[].krs}, NIP {Odwolujacy[].nip}).'
+        sources: [odwolujacy]
+
+  - id: postepowanie
+    keywords: ['post[eę]powani', 'numer', 'bzp', '\bted\b', 'przetarg', 'zam[oó]wieni']
+    answers:
+      - type: odwolanie
+        text: 'Postępowanie {ZamowieniePubliczne.numer_postepowania}: „{ZamowieniePubliczne.tytul}”, ogłoszenie BZP {ZamowieniePubliczne.numer_bzp}, TED {ZamowieniePubliczne.numer_ted}.'
+        sources: [numer_postepowania, tytul]
+
+  - id: data
+    keywords: ['kiedy', '\bdat', 'termin', 'z dnia', 'miejscowo']
+    answers:
+      - type: odwolanie
+        text: 'Odwołanie z dnia {OdwolanieKIO.data|data} ({OdwolanieKIO.miejscowosc}); zaskarżona czynność z dnia {OdwolanieKIO.czynnosc_dzien|data}.'
+        sources: [data, czynnosc_dzien]
+
+  - id: mocodawca
+    keywords: ['mocodawc', 'podpis', 'udzieli', 'kto da[lł] pe[lł]nomocnictw']
+    answers:
+      - type: pelnomocnictwo
+        text: 'Mocodawca: {mocodawca[].data.nazwa}; w jego imieniu podpisali: {mocodawca[].podpisujacy[].imie_nazwisko}.'
+        sources: [mocodawca]
