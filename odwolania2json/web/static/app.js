@@ -620,7 +620,7 @@ async function anonymizePdf() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    const names = { osoba: "nazwiska i imiona", dane: "dane z pól", pesel: "PESEL", email: "e-maile", telefon: "telefony" };
+    const names = { osoba: "nazwiska i imiona", dane: "dane z pól", pesel: "PESEL", email: "e-maile", telefon: "telefony", "telefon stacjonarny": "telefony stacjonarne" };
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     toast(total ? `Zaczerniono ${total}: ${Object.entries(counts).map(([k, v]) => `${names[k] || k} ${v}`).join(", ")}` : "Nie znaleziono danych osobowych do zaczernienia");
   } catch (e) {
@@ -1177,7 +1177,7 @@ function bind() {
   $("#btn-llm").addEventListener("click", refineWithLlm);
   $("#btn-summary").addEventListener("click", showSummary);
   $("#ask-form").addEventListener("submit", (e) => { e.preventDefault(); askQuestion($("#ask-input").value); });
-  $("#ask-examples").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && state.llm.enabled) askQuestion(b.textContent); });
+  $("#ask-examples").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) askQuestion(b.textContent); });
   $("#answers").addEventListener("click", async (e) => {
     const s = e.target.closest(".source");
     if (!s) return;

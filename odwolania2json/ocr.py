@@ -260,9 +260,11 @@ RAPIDOCR_MODELS = {
 @lru_cache(maxsize=2)
 def _rapidocr_engine(model: str = "v6") -> Any:
     """Create (once per model) a RapidOCR engine whose recognition covers Polish diacritics."""
+    import onnxruntime
     from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
-    params: dict[str, Any] = {"Global.log_level": "warning", "Global.use_cls": False, "Det.thresh": 0.2, "Det.box_thresh": 0.3}
+    onnxruntime.set_default_logger_severity(3)  # hide hardware probing warnings (e.g. PCI bus ids on cloud VMs)
+    params: dict[str, Any] = {"Global.log_level": "error", "Global.use_cls": False, "Det.thresh": 0.2, "Det.box_thresh": 0.3}
     if THREADS:
         params.update({"EngineConfig.onnxruntime.intra_op_num_threads": THREADS, "EngineConfig.onnxruntime.inter_op_num_threads": 1})
     if model == "v5":
@@ -382,3 +384,93 @@ def ocr_pages(path: Path, pages: list[int], cfg: dict[str, Any]) -> tuple[dict[i
 
         repaired = {index: correct_text(text, float(cfg.get("spellcheck_min_zipf", 2.0))) for index, text in repaired.items()}
     return repaired, engine
+
+
+# --- Positions of text on scanned pages, for highlighting sources and redacting personal data -----------------------
+
+Box = tuple[float, float, float, float]
+
+
+def ocr_lines(path: Path, index: int, cfg: dict[str, Any]) -> list[tuple[Box, str]]:
+    """Text lines of a scanned page with their boxes (x0, y0, x1, y1) as fractions of the page size, top-left origin.
+
+    The page is rendered without straightening, so the boxes match the page as it is displayed. Results are cached
+    on disk next to the OCR text. Without RapidOCR the list is empty.
+    """
+    import json
+
+    if not _importable("rapidocr"):
+        return []
+    scale = float(cfg.get("scale", 2.0))
+    folder = cache_dir(cfg)
+    cached = folder / f"{hashlib.sha1(path.read_bytes()).hexdigest()}-{index}-lines-{scale}.json" if folder else None
+    if cached and cached.exists():
+        return [(tuple(box), text) for box, text in json.loads(cached.read_text(encoding="utf-8"))]
+    import pypdfium2 as pdfium
+
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
+        try:
+            image = pdf[index].render(scale=scale).to_numpy()[..., :3].copy()
+        finally:
+            pdf.close()
+    height, width = image.shape[:2]
+    result = _rapidocr_engine("v5")(image)
+    lines: list[tuple[Box, str]] = []
+    for box, text in zip(list(result.boxes) if result.boxes is not None else [], list(result.txts or [])):
+        xs, ys = [p[0] for p in box], [p[1] for p in box]
+        lines.append(((float(min(xs)) / width, float(min(ys)) / height, float(max(xs)) / width, float(max(ys)) / height), str(text)))
+    if folder:
+        folder.mkdir(parents=True, exist_ok=True)
+        cached.write_text(json.dumps(lines, ensure_ascii=False), encoding="utf-8")
+    return lines
+
+
+def _fold(text: str) -> tuple[str, list[int]]:
+    """Lower-case letters and digits without diacritics, with the index of each kept character in the original."""
+    import unicodedata
+
+    out, where = [], []
+    for i, ch in enumerate(text):
+        base = unicodedata.normalize("NFKD", ch.lower().replace("ł", "l"))[:1]
+        if base.isalnum():
+            out.append(base)
+            where.append(i)
+    return "".join(out), where
+
+
+def find_in_lines(lines: list[tuple[Box, str]], term: str, min_score: float = 0.8, word_end: bool = False) -> list[tuple[float, Box]]:
+    """Boxes of a term in OCR lines as (score, box): exact matches ignoring case, diacritics and punctuation, else the
+    best fuzzy match of at least min_score. The box covers the matched characters, estimated by their share of the line.
+    With word_end the match is extended to the end of the word (inflected names)."""
+    from difflib import SequenceMatcher
+
+    needle, _ = _fold(term)
+    if len(needle) < 3:
+        return []
+    found: list[tuple[float, Box]] = []
+    fuzzy: tuple[float, Box] | None = None
+    for (x0, y0, x1, y1), text in lines:
+        hay, where = _fold(text)
+        if not hay:
+            continue
+
+        def span(a: int, b: int) -> Box:
+            start, end = where[a], where[b - 1] + 1
+            if word_end:
+                while end < len(text) and (text[end].isalpha() or text[end] == "-"):
+                    end += 1
+            return (x0 + (x1 - x0) * start / len(text), y0, x0 + (x1 - x0) * end / len(text), y1)
+
+        at = hay.find(needle)
+        while at >= 0:
+            found.append((1.0, span(at, at + len(needle))))
+            at = hay.find(needle, at + 1)
+        if not found and len(needle) >= 6:
+            matcher = SequenceMatcher(None, hay, needle, autojunk=False)
+            blocks = [b for b in matcher.get_matching_blocks() if b.size]
+            if blocks:
+                score = sum(b.size for b in blocks) / len(needle)
+                if score >= min_score and (fuzzy is None or score > fuzzy[0]):
+                    fuzzy = (score, span(blocks[0].a, blocks[-1].a + blocks[-1].size))
+    return found or ([fuzzy] if fuzzy else [])
