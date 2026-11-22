@@ -261,7 +261,7 @@ def _rapidocr_engine(model: str = "v6") -> Any:
     """Create (once per model) a RapidOCR engine whose recognition covers Polish diacritics."""
     from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
-    params: dict[str, Any] = {"Global.log_level": "warning", "Det.thresh": 0.2, "Det.box_thresh": 0.3}
+    params: dict[str, Any] = {"Global.log_level": "warning", "Global.use_cls": False, "Det.thresh": 0.2, "Det.box_thresh": 0.3}
     if model == "v5":
         params.update({"Rec.lang_type": LangRec.LATIN, "Rec.ocr_version": OCRVersion.PPOCRV5, "Rec.model_type": ModelType.MOBILE})
     else:
@@ -349,7 +349,7 @@ def cache_dir(cfg: dict[str, Any]) -> Path | None:
 
 def ocr_pages(path: Path, pages: list[int], cfg: dict[str, Any]) -> tuple[dict[int, str], str | None]:
     """OCR the given page indices of a PDF (with an on-disk cache), returning texts per page and the engine used."""
-    engine = pick_engine(cfg.get("engines", ["tesseract", "rapidocr"]))
+    engine = pick_engine(cfg.get("engines", ["rapidocr", "tesseract"]))
     if engine is None:
         log.warning("No OCR engine available for %s", path)
         return {}, None

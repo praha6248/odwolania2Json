@@ -76,10 +76,39 @@ def test_identifier_normalizers():
     """TED, BZP and account numbers are brought to the reference format."""
     assert normalizers.ted("2026/S 142-999327") == "999327-2026"
     assert normalizers.bzp("2026/BZP 00999827") == "2026/BZP00999827"
-    assert normalizers.account("PL07 1044 6255 1544 8206 2521 6547") == "07104462551544820625216547"
+    assert normalizers.account("PL07 1044 6255 1544 8206 2521 6547") == "PL07104462551544820625216547"
+    assert normalizers.account("07 1044 6255 1544 8206 2521 6547") == "07104462551544820625216547"
 
 
 def test_fuzzy_regex_returns_original_text():
     """Diacritic-insensitive matching keeps the original spelling of the value."""
     match = fuzzy_re.search(r"Odwołujący:\s*(\S+)", "Odwolujacy: Żółć")
     assert match is not None and match.group(1) == "Żółć"
+
+
+def test_transfer_preserves_printed_country_prefix_per_account(processor):
+    text = ("Potwierdzenie przelewu\nRachunek nadawcy: 07 1044 6255 1544 8206 2521 6547\n"
+            "Rachunek odbiorcy: PL 07 1044 6255 1544 8206 2521 6547")
+    transfer = processor.process_text(text, Path("p.pdf"), forced_type="przelew").data["przelew_bankowy"]
+    assert transfer["z_rachunku"] == "07104462551544820625216547"
+    assert transfer["na_rachunek"] == "PL07104462551544820625216547"
+
+
+def test_cover_letter_and_multiline_party_form(processor):
+    text = """Toruń, 16 maja 2024
+W załączeniu przekazuję odwołanie.
+miejscowość: Gdynia , 2024-05-15
+Prezes Krajowej Izby Odwoławczej
+Odwołanie
+Odwołujący: imię:
+nazwisko:
+lub
+nazwa firmy: e-Xample
+Pracownia sp. z o.o.
+miejscowość: Gdynia
+Zamawiający: Gmina Testowa, ul. Prosta 1
+"""
+    data = processor.process_text(text, Path("plik.pdf"), forced_type="odwolanie").data
+    assert data["OdwolanieKIO"]["data"] == "2024-05-15"
+    assert data["OdwolanieKIO"]["miejscowosc"] == "Gdynia"
+    assert data["Odwolujacy"][0]["nazwa"] == "e-Xample Pracownia sp. z o.o."

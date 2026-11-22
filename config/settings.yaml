@@ -17,7 +17,7 @@ llm:
 
 ocr:
   enabled: true
-  engines: [tesseract, rapidocr]
+  engines: [rapidocr, tesseract]   # RapidOCR first: the rules and OCR repairs are tuned on it
   min_chars_per_page: 40
   max_pages: 4
   scale: 2.0

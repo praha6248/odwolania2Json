@@ -31,6 +31,11 @@ classify:
     '^\s*PRZYSTĄPIENIE\b': 40
 
 sections:
+  appeal_dateline:
+    # A cover letter may have its own date. Prefer the dateline addressing the Chamber.
+    start: '^[^\n]{2,110}(?:\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:[ \t]*r\.?)?[ \t]*(?=\n\s*Prezes\w*\s+Krajowej\s+Izby\s+Odwoławczej)'
+    include_start: true
+    end: ['Prezes\w*\s+Krajowej']
   header:
     start: '\A'
     end: ['Działając\s+(?:w\s+imieniu|na\s+podstawie)', 'wnoszę\s+(?:o|odwołanie)', '(?:wnosi|wnosimy|składa\w*)\s+(?:niniejszym\s+)?odwołanie']
@@ -89,8 +94,8 @@ fields:
     normalize: [date_iso]
     extract:
       - type: regex
-        scope: header
-        pattern: '^\s*[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?,?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:\s*r(?:oku|\.)?)?\s*$'
+        scope: [appeal_dateline, header]
+        pattern: '^\s*(?:miejscowość:\s*)?[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?[ \t]*,?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:\s*r(?:oku|\.)?)?\s*$'
         ignore_case: false
 
   miejscowosc:
@@ -99,8 +104,8 @@ fields:
     normalize: [strip, place]
     extract:
       - type: regex
-        scope: header
-        pattern: '^\s*([A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?),?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(?:\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:\s*r(?:oku|\.)?)?\s*$'
+        scope: [appeal_dateline, header]
+        pattern: '^\s*(?:miejscowość:\s*)?([A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ\- ]{1,40}?),?\s+(?:(?:dnia|data|z\s+dnia)\s*:?\s+)?(?:\d{1,2}(?:[./-]\d{1,2}[./-]|\s+\w+\s+)\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:\s*r(?:oku|\.)?)?\s*$'
         ignore_case: false
 
   czynnosc_dzien:
@@ -222,9 +227,9 @@ fields:
     extract:
       - type: regex
         scope: [dotyczy, header]
-        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+(?:sprawy|postępowania)|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|postępowani\w*\s+nr|sygn\w*\.?)\s*:?\s*([A-Za-z0-9](?:[A-Za-z0-9./\-_]|[ \t]/[ \t](?=[A-Za-z0-9]{1,4}\b))*[A-Za-z0-9])'
+        pattern: '(?:numer\s+nadany\s+przez\s+zamawiającego|nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+(?:sprawy|postępowania)|numer\s+(?:referencyjny|postępowania|sprawy)|nr\s+postępowania|postępowani\w*\s+nr|sygn\w*\.?)\s*:?\s*([A-Za-z0-9](?:[A-Za-z0-9./\-_]|[ \t]/[ \t](?=[A-Za-z0-9]{1,4}\b))*[A-Za-z0-9])'
       - type: regex
-        pattern: '(?:nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+(?:sprawy|postępowania)|numer\s+postępowania|postępowani\w*\s+nr)\s*:?\s*([A-Za-z0-9](?:[A-Za-z0-9./\-_]|[ \t]/[ \t](?=[A-Za-z0-9]{1,4}\b))*[A-Za-z0-9])'
+        pattern: '(?:numer\s+nadany\s+przez\s+zamawiającego|nr\s+referencyjn\w*(?:\s+sprawy)?|znak\s+(?:sprawy|postępowania)|numer\s+postępowania|postępowani\w*\s+nr)\s*:?\s*([A-Za-z0-9](?:[A-Za-z0-9./\-_]|[ \t]/[ \t](?=[A-Za-z0-9]{1,4}\b))*[A-Za-z0-9])'
 
   tytul:
     description: Title of the procurement.

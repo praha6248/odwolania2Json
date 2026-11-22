@@ -8,17 +8,46 @@ Aplikacja przyjmuje PDF, **rozpoznaje rodzaj dokumentu** (odwołanie, pełnomocn
 |---|---|
 | Język | Python 3.13+ |
 | Zależności | `requirements.txt`, wyłącznie open source |
-| Sprzęt | CPU, bez GPU (OCR na ONNX Runtime / Tesseract) |
+| Sprzęt | CPU, bez GPU (OCR RapidOCR na ONNX Runtime, instalowany przez pip) |
 | LLM | opcjonalny, otwarty model przez API zgodne z OpenAI |
 | Wynik na zbiorze treningowym | **F1 = 1.000** (180 dokumentów, 2032 pola) |
 | Wynik na prawdziwych skanach UZP | **F1 = 0.994** (30 skanów z `dane/skany`) |
+
+## Szybki start
+
+**Bez instalowania Pythona (Windows):** pobierz instalator ze strony [praha6248.github.io/odwolania2Json](https://praha6248.github.io/odwolania2Json/) i uruchom *Odwołania2JSON*. W folderze aplikacji jest też `odwolania2json-cli.exe` do pracy wsadowej: `odwolania2json-cli run -i input -o output`.
+
+**Z kodu źródłowego (Python 3.13+):**
+
+```bash
+pip install -r requirements.txt
+python -m odwolania2json run          # ./input  ->  ./output
+python -m odwolania2json serve        # interfejs w przeglądarce: http://127.0.0.1:8000
+```
+
+Albo skryptem, który sam tworzy środowisko przy pierwszym uruchomieniu:
+
+```bash
+./start.sh            # Linux / macOS
+start.bat             # Windows
+```
+
+Pliki z `input/` trafiają do `output/` z zachowaniem struktury folderów:
+
+```
+input/case1/odwolanie_nr_1.pdf        ->  output/case1/odwolanie_nr_1.json
+input/case1/pelnomocnictwo_nr_1.pdf   ->  output/case1/pelnomocnictwo_nr_1.json
+input/case1/przelew_nr_1.pdf          ->  output/case1/przelew_nr_1.json
+```
+
+Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza puli dostaje plik z pustym JSON `{}`.
 
 ## Jak to działa
 
 1. **Wgrywasz PDF-y sprawy:** przeciągasz je na stronę albo wrzucasz do folderu `input/`. Nazwy plików nie mają znaczenia.
 2. **Tekst:** aplikacja czyta warstwę tekstową PDF. Strony bez tekstu (skany) przechodzą przez OCR na CPU z prostowaniem strony i słownikową korektą polskich słów.
 3. **Rozpoznanie typu:** punktacja słów kluczowych, warunki konieczne i kary za cechy innych pism (np. „WYROK”, „Sygn. akt”), wszystko w YAML. Dokument spoza puli dostaje pusty JSON `{}`.
-4. **Ekstrakcja:** dla rozpoznanego typu działają reguły z `config/document_types/<typ>.yaml` (sekcje dokumentu, etykiety, wzorce, słowniki, normalizacja dat, kwot, rachunków, numerów BZP i TED). Każde pole zapamiętuje, z którego fragmentu pochodzi.
+4. **Ekstrakcja:** dla rozpoznanego typu działają reguły z `config/document_types/<typ>.yaml` (sekcje dokumentu, etykiety, wzorce, słowniki, normalizacja dat, kwot, numerów BZP i TED oraz rachunków, zapisywanych tak jak w dokumencie, bez spacji, z kodem kraju (PL lub innym), jeśli dokument go ma). Każde pole zapamiętuje, z którego fragmentu pochodzi.
 5. **Wynik:** JSON zgodny ze schematem UZP, nazwany jak plik źródłowy, w tej samej strukturze folderów co wejście.
 6. **Tryb dokładny (opcjonalny):** otwarty LLM niezależnie sprawdza pola. Rozbieżności trafiają do weryfikacji, a nie do wyniku. Do tego streszczenia i asystent z cytatami.
 
@@ -51,29 +80,7 @@ Na telefonie nawigacja jest na dole ekranu, a tabela zamienia się w listę kart
 
 Widoki mają własne adresy (np. `#/sprawy`, `#/dokument/<id>/weryfikacja`), więc przetrwają odświeżenie strony.
 
-## Szybki start
-
-```bash
-pip install -r requirements.txt
-python -m odwolania2json run          # ./input  ->  ./output
-```
-
-Albo skryptem, który sam tworzy środowisko przy pierwszym uruchomieniu:
-
-```bash
-./start.sh            # Linux / macOS
-start.bat             # Windows
-```
-
-Pliki z `input/` trafiają do `output/` z zachowaniem struktury folderów:
-
-```
-input/case1/odwolanie_nr_1.pdf        ->  output/case1/odwolanie_nr_1.json
-input/case1/pelnomocnictwo_nr_1.pdf   ->  output/case1/pelnomocnictwo_nr_1.json
-input/case1/przelew_nr_1.pdf          ->  output/case1/przelew_nr_1.json
-```
-
-Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza puli dostaje plik z pustym JSON `{}`.
+## Użycie
 
 ### Polecenia CLI
 
@@ -109,6 +116,17 @@ python -m odwolania2json serve        # http://127.0.0.1:8000
 
 **Dokumenty spoza puli** dostają pusty JSON `{}` i komunikat „nie udało się dopasować typu dokumentu” (`unmatched_output` w `settings.yaml`).
 
+### Serwer oceny UZP (Azure, Ubuntu 24.04)
+
+```bash
+cd /opt/solution
+git clone https://github.com/praha6248/odwolania2Json.git repo
+bash repo/deploy/azure/setup.sh      # Python 3.13 (uv), zależności, modele OCR, test na przykładach
+sudo bash run.sh                     # komenda z /opt/solution/RUN.md: input/ -> output/
+```
+
+`setup.sh` kopiuje do `/opt/solution` pliki `RUN.md` i `run.sh`. Ocena nie potrzebuje sieci, Dockera, GPU ani kluczy API; każdy PDF dostaje plik JSON (dokument spoza puli lub nieczytelny: `{}`), a błąd jednego pliku nie zatrzymuje reszty.
+
 ### Docker Compose
 
 ```bash
@@ -121,7 +139,6 @@ docker compose --profile batch run --rm batch     # ./input -> ./output
 Na stronie projektu (GitHub Pages) i w zakładce **Releases** są instalator Windows, paczka przenośna Windows (`.zip`) oraz paczka Linux (`.tar.gz`) z sumami SHA-256. W folderze aplikacji są dwa programy: `Odwolania2JSON` otwiera okno (bez konsoli), a `odwolania2json-cli` działa w terminalu z tymi samymi poleceniami co `python -m odwolania2json` (np. `odwolania2json-cli run -i input -o output`).
 
 W Linuksie okno aplikacji korzysta z systemowego GTK 3 i WebKit2GTK. Na Ubuntu 24.04 lub Debianie 12 wymagane pakiety zainstalujesz poleceniem `sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1`. Obsługiwana jest też wersja WebKit2GTK 4.0.
-
 
 **Aktualizacje małymi łatkami:** każde wydanie zawiera też `Odwolania2JSON-<platforma>.pack` i `.manifest.json`. Zainstalowana aplikacja (dzwonek w prawym górnym rogu) porównuje swoje pliki z manifestem i **pobiera tylko pliki, które się zmieniły**, przez zapytania HTTP Range. Przy zmianie samego kodu to zwykle kilkaset kB. Każdy plik jest weryfikowany SHA-256, podmiana następuje po zamknięciu aplikacji, a foldery `config/`, `input/` i `output/` nie są ruszane. Instalator również nie nadpisuje lokalnej konfiguracji.
 
@@ -137,7 +154,7 @@ PDF ──► pdftext ──► classifier ──► engine (+ extractors) ─�
 | Moduł | Rola |
 |---|---|
 | `pdftext.py` | tekst z PDF (`pypdf`), czyszczenie Unicode, stopki „Strona X z Y”, akcenty z LaTeX-a; strony bez tekstu idą do OCR |
-| `ocr.py` | OCR na CPU: Tesseract (`pol`), jeśli jest zainstalowany, inaczej RapidOCR (PP-OCRv5 Latin, ONNX); cache na dysku, poprawki typowych pomyłek |
+| `ocr.py` | OCR na CPU: RapidOCR na ONNX (PP-OCRv5 Latin, a strony zniekształcone ponownie PP-OCRv6), Tesseract tylko jako zapas; prostowanie strony, odtwarzanie układu, cache na dysku, poprawki typowych pomyłek |
 | `fuzzy_re.py` | wyrażenia regularne niewrażliwe na polskie znaki (OCR często je gubi); wartości są wycinane z oryginalnego tekstu |
 | `classifier.py` | punktacja słów kluczowych i wzorców z sekcji `classify` każdego typu, próg w `settings.yaml` |
 | `engine.py` | silnik: sekcje dokumentu, łańcuchy ekstraktorów, normalizacja, szablon wyniku, ślad (metoda, fragment, pozycja) |
@@ -145,6 +162,10 @@ PDF ──► pdftext ──► classifier ──► engine (+ extractors) ─�
 | `normalizers.py` | daty, kwoty, rachunki, KRS/NIP, numery BZP/TED, imiona i nazwiska |
 | `llm.py` | opcjonalne uzupełnianie pustych pól przez otwarty model (Ollama, vLLM, llama.cpp lub dostawca w UE) |
 | `pipeline.py` | przetwarzanie pliku i drzewa katalogów, zapis JSON i śladów |
+| `cases.py`, `formal.py` | grupowanie dokumentów w sprawy i kontrola formalna z `config/formal_checks.yaml` |
+| `locate.py` | położenie wartości na stronie PDF do zaznaczenia w podglądzie |
+| `wizard.py` | kreator nowego typu: podpowiedzi reguł, podgląd, zapis YAML |
+| `export.py`, `assistant.py`, `anonymize.py` | eksport do Excela i CSV, wyszukiwarka BM25 (z LLM odpowiedzi i streszczenia), zaczernianie danych osobowych |
 | `evaluate.py` | F1 zgodne z zasadami UZP: zła wartość = FP, brak = FN, długie napisy zaliczane przy ≥ 80% podobieństwa |
 | `web/` | FastAPI i jednostronicowy interfejs bez zewnętrznych zasobów |
 
@@ -185,6 +206,8 @@ python -m odwolania2json eval <katalog dane/ z repozytorium UZP>
 
 Skany przechodzą przez OCR na CPU: RapidOCR z modelem PP-OCRv5 dla alfabetu łacińskiego, a strona, na której mniej niż 80% słów to polskie słowa ze słownika, jest czytana ponownie modelem PP-OCRv6 (wielojęzyczny, z polskim) i wygrywa lepsza wersja (`ocr.rapidocr_model: auto` w `settings.yaml`). Do tego prostowanie strony, odtwarzanie układu kolumn i etykiet, poprawki typowych pomyłek OCR (np. „q” zamiast „ą” na końcu słowa, „o” zamiast zera w dacie, brakujący cudzysłów otwierający, nazwa miesiąca z jedną złą literą) i słownikowa korekta polskich słów. Najsłabszy jest poziom „trudny”: przy 120 DPI i mocnej kompresji część drobnego, bladego druku jest nieczytelna także dla człowieka.
 
+**Czas przetwarzania** na zwykłym CPU: PDF z warstwą tekstową 0,01–0,2 s na dokument. Skan: kilka sekund na stronę (na laptopie obciążonym innymi programami do ok. 15 s); strona zniekształcona jest czytana drugi raz. OCR obejmuje najwyżej 4 pierwsze strony bez warstwy tekstowej (`ocr.max_pages`), bo tam są wszystkie potrzebne dane, a wynik OCR trafia do pamięci podręcznej, więc ponowne przetworzenie tego samego pliku jest natychmiastowe.
+
 Same modele LLM bez reguł (`tools/eval_llm.py`, 16 spraw): Bielik-4.5B F1 0.78, Qwen3-1.7B 0.64, Qwen3-0.6B 0.53, Bielik-1.5B 0.47, Qwen2.5-1.5B 0.37 (szczegóły i opis wykorzystanego LLM: [docs/llm.md](docs/llm.md)). Dlatego LLM służy tylko do weryfikacji i funkcji dodatkowych, a wynik JSON pochodzi z reguł.
 
 ## Rozwój
@@ -213,4 +236,19 @@ Workflowy GitHub Actions:
 
 ## Licencja
 
-Apache License 2.0, pełny tekst w pliku [LICENSE](LICENSE). Wszystkie zależności są open source.
+Apache License 2.0, pełny tekst w pliku [LICENSE](LICENSE).
+
+Wykorzystane komponenty zewnętrzne (wszystkie open source):
+
+| Komponent | Zastosowanie | Licencja |
+|---|---|---|
+| pypdf, pypdfium2 (PDFium) | tekst i renderowanie stron PDF, położenie wartości na stronie | BSD-3-Clause, Apache-2.0 |
+| RapidOCR z modelami PP-OCRv5 i PP-OCRv6 (PaddleOCR) | OCR skanów na CPU | Apache-2.0 |
+| ONNX Runtime | uruchamianie modeli OCR | MIT |
+| wordfreq, Morfeusz 2 | słownik i odmiana polskich słów | Apache-2.0 (dane CC BY-SA 4.0), BSD-2-Clause |
+| FastAPI, Uvicorn, python-multipart | interfejs webowy | MIT, BSD-3-Clause, Apache-2.0 |
+| PyYAML, NumPy, Pillow, openpyxl | konfiguracja, obrazy, eksport do Excela | MIT, BSD-3-Clause, MIT-CMU, MIT |
+| Tesseract (zapasowy OCR, jeśli jest zainstalowany) | OCR | Apache-2.0 |
+| Bielik-4.5B-v3.0-Instruct, Ollama (opcjonalnie) | tryb dokładny z LLM | Apache-2.0, MIT |
+| PyInstaller, Inno Setup | budowanie paczek i instalatora | GPL-2.0 z wyjątkiem dla budowanych programów, licencja Inno Setup |
+
