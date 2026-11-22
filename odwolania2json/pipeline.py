@@ -71,6 +71,7 @@ class Processor:
         self.settings = settings or load_settings()
         enabled = self.settings.llm.get("enabled", False) if use_llm is None else use_llm
         self.llm = LLMClient(self.settings.llm) if enabled else None
+        self.ocr_deadline: float | None = None  # wall-clock time after which scans are no longer OCR-ed
 
     def llm_for(self, use_llm: bool | None) -> LLMClient | None:
         """Return the LLM client to use: the configured one, or one forced on/off for a single call."""
@@ -101,7 +102,10 @@ class Processor:
         path = Path(path)
         started = time.perf_counter()
         try:
-            doc = extract_text(path, self.settings.ocr)
+            ocr = self.settings.ocr
+            if self.ocr_deadline is not None and time.time() > self.ocr_deadline:
+                ocr = {**ocr, "enabled": False}
+            doc = extract_text(path, ocr)
         except Exception as exc:
             log.exception("Cannot read %s", path)
             return DocumentResult(path, None, Classification(None, 0.0), None, error=str(exc))
@@ -119,21 +123,34 @@ class Processor:
             log.exception("%s: processing failed", pdf)
             return DocumentResult(path=pdf, doc_type=None, classification=Classification(None, 0.0), data=None, error=str(exc))
 
-    def process_tree(self, input_dir: str | Path, output_dir: str | Path, trace_dir: str | Path | None = None, workers: int = 1) -> list[DocumentResult]:
-        """Process every PDF under input_dir, mirroring the folder tree into output_dir, optionally in parallel processes."""
-        input_dir, output_dir = Path(input_dir), Path(output_dir)
-        pdfs = sorted(p for p in input_dir.rglob("*") if p.suffix.lower() == ".pdf" and p.is_file())
-        if workers > 1 and len(pdfs) > 1:
-            from concurrent.futures import ProcessPoolExecutor
+    def process_tree(
+        self,
+        input_dir: str | Path,
+        output_dir: str | Path,
+        trace_dir: str | Path | None = None,
+        workers: int = 1,
+        time_limit: float | None = None,
+    ) -> list[DocumentResult]:
+        """Process every PDF under input_dir, mirroring the folder tree into output_dir, optionally in parallel processes.
 
-            with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(self.settings, self.llm is not None, workers)) as pool:
-                processed = list(pool.map(_process_in_worker, pdfs, chunksize=1))
-        else:
-            processed = [self.safe_process(pdf) for pdf in pdfs]
-        results = []
-        for pdf, result in zip(pdfs, processed):
+        With time_limit (seconds), files started after that time are read from their text layer only, without OCR,
+        so a large batch of scans still finishes within a fixed time.
+        """
+        input_dir, output_dir = Path(input_dir), Path(output_dir)
+        self.ocr_deadline = time.time() + time_limit if time_limit else None
+        pdfs = sorted(p for p in input_dir.rglob("*") if p.suffix.lower() == ".pdf" and p.is_file())
+        if self.settings.unmatched_output == "empty_json":
+            # Every input gets an output file up front, so a run that is stopped early still leaves a complete tree.
+            for pdf in pdfs:
+                target = output_dir / pdf.relative_to(input_dir).with_suffix(".json")
+                if not target.exists():
+                    write_json(target, {})
+        done: dict[Path, DocumentResult] = {}
+
+        def finish(pdf: Path, result: DocumentResult) -> None:
+            """Write the result of one PDF as soon as it is known."""
+            done[pdf] = result
             relative = pdf.relative_to(input_dir).with_suffix(".json")
-            results.append(result)
             if result.data is not None:
                 write_json(output_dir / relative, result.data)
             elif self.settings.unmatched_output == "empty_json":
@@ -144,19 +161,35 @@ class Processor:
                 log.warning("%s: %s", pdf.relative_to(input_dir), result.message)
             else:
                 log.info("%s -> %s", pdf.relative_to(input_dir), result.doc_type)
-        return results
+
+        if workers > 1 and len(pdfs) > 1:
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+
+            try:
+                with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(self.settings, self.llm is not None, workers, self.ocr_deadline)) as pool:
+                    futures = {pool.submit(_process_in_worker, pdf): pdf for pdf in pdfs}
+                    for future in as_completed(futures):
+                        finish(futures[future], future.result())
+            except Exception:
+                # A worker died (e.g. killed for memory); finish the remaining files in this process.
+                log.exception("Parallel processing failed, continuing sequentially")
+        for pdf in pdfs:
+            if pdf not in done:
+                finish(pdf, self.safe_process(pdf))
+        return [done[pdf] for pdf in pdfs]
 
 
 _WORKER: Processor | None = None
 
 
-def _init_worker(settings: Settings, use_llm: bool, workers: int) -> None:
+def _init_worker(settings: Settings, use_llm: bool, workers: int, ocr_deadline: float | None = None) -> None:
     """Create the processor of a worker process and share the CPU cores between the workers' OCR."""
     global _WORKER
     from . import ocr
 
     ocr.THREADS = max(1, (os.cpu_count() or workers) // workers)
     _WORKER = Processor(settings, use_llm=use_llm)
+    _WORKER.ocr_deadline = ocr_deadline
 
 
 def _process_in_worker(pdf: Path) -> DocumentResult:

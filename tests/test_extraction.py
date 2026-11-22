@@ -1,6 +1,7 @@
 """End-to-end and unit tests of the extraction pipeline."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -123,3 +124,32 @@ def test_parallel_run_matches_sequential(tmp_path):
     names = sorted(p.relative_to(sequential) for p in sequential.rglob("*.json"))
     assert names and names == sorted(p.relative_to(parallel) for p in parallel.rglob("*.json"))
     assert all((sequential / n).read_text(encoding="utf-8") == (parallel / n).read_text(encoding="utf-8") for n in names)
+
+
+def _crash_worker(pdf):
+    """Stand-in worker that kills its own process, as the OOM killer would."""
+    os._exit(1)
+
+
+def test_parallel_run_survives_dead_worker(tmp_path, monkeypatch):
+    """When a worker process dies, the remaining files are processed in the main process and every JSON is written."""
+    from odwolania2json import pipeline
+
+    monkeypatch.setattr(pipeline, "_process_in_worker", _crash_worker)
+    expected, output = tmp_path / "seq", tmp_path / "out"
+    Processor(load_settings(), use_llm=False).process_tree(FIXTURES / "przyklad_41", expected)
+    Processor(load_settings(), use_llm=False).process_tree(FIXTURES / "przyklad_41", output, workers=2)
+    names = sorted(p.relative_to(expected) for p in expected.rglob("*.json"))
+    assert names and all((expected / n).read_text(encoding="utf-8") == (output / n).read_text(encoding="utf-8") for n in names)
+
+
+def test_time_limit_skips_ocr(tmp_path, monkeypatch):
+    """Once the time limit has passed, files are read without OCR but still get an output file."""
+    from odwolania2json import pipeline
+
+    seen = []
+    real = pipeline.extract_text
+    monkeypatch.setattr(pipeline, "extract_text", lambda path, ocr: seen.append(ocr.get("enabled", True)) or real(path, ocr))
+    Processor(load_settings(), use_llm=False).process_tree(FIXTURES / "przyklad_41", tmp_path, time_limit=1e-9)
+    assert seen and not any(seen)
+    assert len(list(tmp_path.glob("*.json"))) == len(list((FIXTURES / "przyklad_41").glob("*.pdf")))
