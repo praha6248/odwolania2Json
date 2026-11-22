@@ -39,8 +39,30 @@ def wait_until_up(url: str, timeout: float = 30.0) -> bool:
     return False
 
 
+def ensure_streams() -> Path | None:
+    """Give a windowed (no console) process real stdout and stderr, which uvicorn's logging needs.
+
+    PyInstaller sets sys.stdout and sys.stderr to None in a Windows executable without a console; the output then
+    goes to a log file in the user's cache folder. Returns the log path, or None when the streams already exist.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return None
+    log: Path | None = Path(os.environ.get("O2J_CACHE_DIR") or Path.home() / ".cache" / "odwolania2json") / "odwolania2json.log"
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        stream = open(log, "a", encoding="utf-8", buffering=1)  # stays open for the whole process
+    except OSError:
+        stream, log = open(os.devnull, "w", encoding="utf-8"), None
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
+    return log
+
+
 def main() -> int:
     """Start the server in a background thread and open the user interface."""
+    ensure_streams()
     import uvicorn
 
     from .web.app import create_app

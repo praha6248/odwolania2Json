@@ -7,8 +7,12 @@ console executable (odwolania2json-cli) always runs the CLI, so its output stays
 import sys
 from pathlib import Path
 
-from odwolania2json.cli import main as cli_main
-from odwolania2json.desktop import main as desktop_main
+from odwolania2json.desktop import ensure_streams
+
+ensure_streams()  # a window executable has no console: send output to a log file before anything logs
+
+from odwolania2json.cli import main as cli_main  # noqa: E402
+from odwolania2json.desktop import main as desktop_main  # noqa: E402
 
 if __name__ == "__main__":
     console = Path(sys.executable).stem.lower().endswith("-cli")
