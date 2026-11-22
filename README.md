@@ -58,7 +58,9 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza pul
 - **Kreator nowego typu dokumentu:** wgrywasz przykład, zaznaczasz wartości myszką, a kreator proponuje reguły (etykieta, wzorzec, normalizacja), pokazuje wynik na żywo, sprawdza inne wgrane dokumenty i zapisuje zwykły plik YAML.
 - **Eksport do Excela i CSV:** zestawienie dokumentów, arkusz na każdy typ z polami JSON w kolumnach i arkusz z kontrolą formalną.
 - **Asystent bez modelu:** na typowe pytania (kto reprezentuje odwołującego, jaka kwota i kiedy przelano, czego dotyczy odwołanie, kto jest zamawiającym, numer postępowania, daty, kto podpisał pełnomocnictwo) odpowiada od razu zdaniem złożonym z odczytanych danych, osobno dla każdej sprawy i ze źródłami w dokumencie. Pytania i szablony odpowiedzi są w `config/assistant.yaml`. Pytania o treść pisma (zarzuty, żądania, uzasadnienie) trafiają do lokalnej wyszukiwarki fragmentów (BM25) z podświetleniem słów. Z włączonym LLM ta sama zakładka odpowiada też na pytania swobodne z cytatami.
-- **Anonimizacja PDF (na żądanie):** przycisk „Anonimizuj PDF” albo polecenie `anonymize` tworzy osobną kopię z zaczernionymi imionami i nazwiskami osób (także w odmianie), numerami PESEL, e-mailami i telefonami. Strony kopii są obrazami, więc zakrytego tekstu nie da się skopiować. Oryginał i JSON pozostają bez zmian.
+- **Anonimizacja PDF (na żądanie):** przycisk „Anonimizuj PDF” albo polecenie `anonymize` tworzy osobną kopię z zaczernionymi imionami i nazwiskami osób (także w odmianie), numerami PESEL, e-mailami i telefonami (komórkowymi i stacjonarnymi). Działa też na skanach: dane są wyszukiwane w liniach odczytanych przez OCR. Strony kopii są obrazami, więc zakrytego tekstu nie da się skopiować. Oryginał i JSON pozostają bez zmian.
+
+  ![Anonimizacja PDF: oryginał i kopia z zaczernionymi danymi osobowymi](docs/screenshots/14-anonimizacja.png)
 
 ### Zrzuty ekranu
 
@@ -104,7 +106,7 @@ python -m odwolania2json serve        # http://127.0.0.1:8000
 ```
 
 - **Dokumenty:** kafelki KPI, filtr typu, tabela z kompletnością pól i eksportem.
-- **Szczegół:** podgląd PDF obok JSON; zakładka *Źródła* pokazuje metodę i fragment tekstu dla każdego pola, a kliknięcie zaznacza wartość na stronie PDF; *Klasyfikacja* pokazuje punktację typów; przycisk *Anonimizuj PDF* pobiera kopię z zaczernionymi danymi osobowymi.
+- **Szczegół:** podgląd PDF obok JSON; zakładka *Źródła* pokazuje metodę i fragment tekstu dla każdego pola, a kliknięcie zaznacza wartość na stronie PDF (także na skanie, według pozycji linii z OCR); *Klasyfikacja* pokazuje punktację typów; przycisk *Anonimizuj PDF* pobiera kopię z zaczernionymi danymi osobowymi.
 - **Sprawy:** grupowanie, zgodność stron i kontrola formalna każdej sprawy.
 - **Asystent:** wyszukiwarka fragmentów bez LLM, a z LLM odpowiedzi z cytatami.
 - **Typy dokumentów:** lista typów z YAML i kreator nowego typu.
