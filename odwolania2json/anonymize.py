@@ -2,7 +2,8 @@
 
 Names come from the extracted fields (any key with imie_nazwisko, pesel or mail), other data from patterns in the
 text. Every occurrence is found in the pdfium text layer, including inflected forms of names (the word is matched
-from its start and the box extends to the end of the word). Pages are rendered as images with black boxes and saved
+from its start and the box extends to the end of the word); on scanned pages the same terms are matched in the OCR
+text lines (ocr.ocr_lines). Pages are rendered as images with black boxes and saved
 as a new PDF, so the redacted text is gone and cannot be copied out.
 """
 
@@ -18,6 +19,7 @@ PATTERNS = {
     "pesel": r"(?<!\d)\d{11}(?!\d)",
     "email": r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+",
     "telefon": r"(?<!\d)(?:\+48[ -]?)?\d{3}[ -]\d{3}[ -]\d{3}(?!\d)",
+    "telefon stacjonarny": r"(?<![\d-])(?:\+48 ?)?\(?\d{2}\)? \d{3} \d{2} \d{2}(?![\d-])",
 }
 
 
@@ -76,23 +78,34 @@ def find_boxes(textpage: Any, term: str, whole_start: bool) -> list[tuple[float,
     return boxes
 
 
-def redact(path: Path, fields: list[dict[str, Any]], text: str, related: list[dict[str, Any]] | None = None, scale: float = 2.0) -> tuple[bytes, dict[str, int]]:
+def redact(
+    path: Path,
+    fields: list[dict[str, Any]],
+    text: str,
+    related: list[dict[str, Any]] | None = None,
+    scale: float = 2.0,
+    ocr: dict[str, Any] | None = None,
+) -> tuple[bytes, dict[str, int]]:
     """Return the redacted PDF and the number of covered fragments per kind of data."""
     import pypdfium2 as pdfium
     from PIL import ImageDraw
 
-    from .ocr import PDFIUM_LOCK
+    from .locate import SCANNED_CHARS
+    from .ocr import PDFIUM_LOCK, find_in_lines, ocr_lines
 
     wanted = terms(fields, text, related)
     counts: dict[str, int] = {}
     images = []
+    scanned = []
     with PDFIUM_LOCK:
         pdf = pdfium.PdfDocument(str(path))
         try:
-            for page in pdf:
+            for number, page in enumerate(pdf):
                 textpage = page.get_textpage()
                 height = page.get_size()[1]
                 image = page.render(scale=scale).to_pil().convert("RGB")
+                if textpage.count_chars() < SCANNED_CHARS:
+                    scanned.append(number)
                 draw = ImageDraw.Draw(image)
                 for kind, term in wanted:
                     boxes = find_boxes(textpage, term, kind == "osoba")
@@ -102,6 +115,18 @@ def redact(path: Path, fields: list[dict[str, Any]], text: str, related: list[di
                 images.append(image)
         finally:
             pdf.close()
+    for number in scanned if ocr is not None else []:
+        lines = ocr_lines(path, number, ocr)
+        image = images[number]
+        draw = ImageDraw.Draw(image)
+        width, height = image.size
+        for kind, term in wanted:
+            # Exact matches only: a fuzzy match could black out the wrong words.
+            boxes = [box for score, box in find_in_lines(lines, term, min_score=1.0, word_end=kind == "osoba") if score >= 1.0]
+            counts[kind] = counts.get(kind, 0) + len(boxes)
+            for x0, y0, x1, y1 in boxes:
+                pad = 0.008 * width  # character positions on a scan are estimated, so cover a little more
+                draw.rectangle([x0 * width - pad, y0 * height - 3, x1 * width + pad, y1 * height + 3], fill="black")
     buffer = io.BytesIO()
     images[0].save(buffer, format="PDF", save_all=True, append_images=images[1:], resolution=72 * scale)
     return buffer.getvalue(), {k: v for k, v in counts.items() if v}

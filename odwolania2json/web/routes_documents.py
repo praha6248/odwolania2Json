@@ -128,9 +128,10 @@ def router(app: AppState) -> APIRouter:
         field = next((f for f in result.get("fields") or [] if f["field"] == name), None)
         if field is None:
             raise HTTPException(status_code=404, detail="Nieznane pole")
-        if result.get("ocr"):
-            return {"field": name, "boxes": [], "reason": "Skan bez warstwy tekstowej: źródło zaznaczamy w zakładce Tekst."}
-        return {"field": name, "boxes": locate(item["path"], field, result.get("text") or "")}
+        boxes = locate(item["path"], field, result.get("text") or "", app.processor.settings.ocr)
+        if not boxes and result.get("ocr"):
+            return {"field": name, "boxes": [], "reason": "Nie znaleźliśmy tej wartości na skanie: źródło zaznaczamy w zakładce Tekst."}
+        return {"field": name, "boxes": boxes}
 
     @api.get("/{doc_id}/anonymized.pdf")
     def anonymized(doc_id: str) -> Response:
@@ -139,8 +140,6 @@ def router(app: AppState) -> APIRouter:
 
         item = store.get(doc_id)
         result = item.get("result") or {}
-        if result.get("ocr"):
-            raise HTTPException(status_code=400, detail="Anonimizacja wymaga PDF z warstwą tekstową.")
         reference = key((result.get("case_values") or {}).get("reference"))
         related = [
             f
@@ -148,7 +147,7 @@ def router(app: AppState) -> APIRouter:
             if other["id"] != doc_id and reference and key((other.get("case_values") or {}).get("reference")) == reference
             for f in other.get("fields") or []
         ]
-        data, counts = redact(item["path"], result.get("fields") or [], result.get("text") or "", related)
+        data, counts = redact(item["path"], result.get("fields") or [], result.get("text") or "", related, ocr=app.processor.settings.ocr)
         name = Path(result.get("filename") or "dokument.pdf").stem + "_anonimizacja.pdf"
         return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Redacted": json.dumps(counts), "Access-Control-Expose-Headers": "X-Redacted"})
 

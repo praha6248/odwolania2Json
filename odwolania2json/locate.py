@@ -2,8 +2,8 @@
 
 The evidence span of a field points into the cleaned document text, not into the PDF, so the matched text (line by
 line) and the value itself are searched in the PDF text layer with pdfium. When a term occurs several times, the
-occurrence closest to the relative position of the evidence span is chosen. Scanned pages without a text layer
-return no boxes.
+occurrence closest to the relative position of the evidence span is chosen. On scanned pages without a text layer
+the terms are matched in the OCR text lines and their boxes (see ocr.ocr_lines).
 """
 
 from __future__ import annotations
@@ -34,7 +34,10 @@ def _leaves(node: Any) -> list[Any]:
     return [node]
 
 
-def locate(path: Path, field: dict[str, Any], text: str) -> list[dict[str, Any]]:
+SCANNED_CHARS = 20  # a page with fewer text-layer characters is treated as a scan
+
+
+def locate(path: Path, field: dict[str, Any], text: str, ocr: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Return highlight boxes [{page, rects: [[x0, y0, x1, y1], ...]}] with coordinates as fractions of the page size."""
     import pypdfium2 as pdfium
 
@@ -64,9 +67,33 @@ def locate(path: Path, field: dict[str, Any], text: str) -> list[dict[str, Any]]
                         hits.setdefault(number, []).append([left / width, 1 - top / height, right / width, 1 - bottom / height])
                 if hits:
                     break
+            scanned = [i for i, count in enumerate(counts) if count < SCANNED_CHARS]
         finally:
             pdf.close()
+    if not hits and scanned and ocr is not None:
+        hits = _locate_scanned(path, scanned[: int(ocr.get("max_pages", 4))], groups, anchor, ocr)
     return [{"page": number + 1, "rects": rects} for number, rects in sorted(hits.items())]
+
+
+def _locate_scanned(path: Path, pages: list[int], groups: tuple[list[str], list[str]], anchor: float, ocr: dict[str, Any]) -> dict[int, list[list[float]]]:
+    """Boxes of the evidence lines (or values) in the OCR lines of scanned pages, one best match per term."""
+    from .ocr import find_in_lines, ocr_lines
+
+    lines = {number: ocr_lines(path, number, ocr) for number in pages}
+    hits: dict[int, list[list[float]]] = {}
+    for group in groups:
+        for term in group:
+            candidates = [
+                (score, -abs((number + (box[1] + box[3]) / 2) / len(pages) - anchor), number, box)
+                for number, page_lines in lines.items()
+                for score, box in find_in_lines(page_lines, term)
+            ]
+            if candidates:
+                _, _, number, box = max(candidates)
+                hits.setdefault(number, []).append(list(box))
+        if hits:
+            break
+    return hits
 
 
 def _closest(pages: list[Any], counts: list[int], total: int, term: str, anchor: float) -> tuple[int, int, int] | None:
