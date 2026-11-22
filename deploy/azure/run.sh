@@ -10,4 +10,4 @@ export O2J_CACHE_DIR="$REPO/.ocr-cache"
 
 mkdir -p "$SOLUTION/output"
 cd "$REPO"
-"$REPO/.venv/bin/python" -m odwolania2json run -i "$SOLUTION/input" -o "$SOLUTION/output" --workers 0
+"$REPO/.venv/bin/python" -m odwolania2json run -i "$SOLUTION/input" -o "$SOLUTION/output" --workers 0 --time-limit 40

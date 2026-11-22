@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--trace", type=Path, default=None, help="write per-field extraction traces here")
     run.add_argument("--llm", action=argparse.BooleanOptionalAction, default=None, help="force LLM refinement on/off")
     run.add_argument("--workers", type=int, default=1, help="parallel worker processes (0 = one per CPU core)")
+    run.add_argument("--time-limit", type=float, default=None, metavar="MIN", help="after MIN minutes read the remaining files without OCR")
 
     one = sub.add_parser("extract", help="print JSON for a single PDF")
     one.add_argument("pdf", type=Path)
@@ -107,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         args.input.mkdir(parents=True, exist_ok=True)
         workers = args.workers if args.workers > 0 else (os.cpu_count() or 1)
-        results = processor.process_tree(args.input, args.output, args.trace, workers=workers)
+        results = processor.process_tree(args.input, args.output, args.trace, workers=workers, time_limit=args.time_limit * 60 if args.time_limit else None)
         done = sum(r.data is not None for r in results)
         unmatched = [r for r in results if r.data is None and r.error is None]
         empty = len(unmatched) if processor.settings.unmatched_output == "empty_json" else 0
