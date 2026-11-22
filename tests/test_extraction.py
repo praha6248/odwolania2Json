@@ -112,3 +112,14 @@ Zamawiający: Gmina Testowa, ul. Prosta 1
     assert data["OdwolanieKIO"]["data"] == "2024-05-15"
     assert data["OdwolanieKIO"]["miejscowosc"] == "Gdynia"
     assert data["Odwolujacy"][0]["nazwa"] == "e-Xample Pracownia sp. z o.o."
+
+
+def test_parallel_run_matches_sequential(tmp_path):
+    """Processing with two worker processes writes the same JSON files as one process."""
+    settings = load_settings()
+    sequential, parallel = tmp_path / "seq", tmp_path / "par"
+    Processor(settings, use_llm=False).process_tree(FIXTURES, sequential)
+    Processor(settings, use_llm=False).process_tree(FIXTURES, parallel, workers=2)
+    names = sorted(p.relative_to(sequential) for p in sequential.rglob("*.json"))
+    assert names and names == sorted(p.relative_to(parallel) for p in parallel.rglob("*.json"))
+    assert all((sequential / n).read_text(encoding="utf-8") == (parallel / n).read_text(encoding="utf-8") for n in names)
