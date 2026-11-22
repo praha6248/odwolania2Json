@@ -788,10 +788,20 @@ function markTerms(text, terms) {
 /** Show the best matching fragments without a language model. */
 async function searchDocuments(question, box) {
   try {
-    const { hits } = await send("/api/search", "POST", { question });
-    box.querySelector(".answer-a").innerHTML = hits.length
-      ? `<span class="muted">Najtrafniejsze fragmenty (${hits.length}) · wyszukiwanie lokalne bez modelu</span>`
-      : "Nie znalazłem fragmentów pasujących do zapytania.";
+    const { answer, sources, hits } = await send("/api/answer", "POST", { question });
+    const head = box.querySelector(".answer-a");
+    if (answer) {
+      head.innerHTML = `<div class="answer-lines">${answer.split("\n").map((line) => `<p>${esc(line)}</p>`).join("")}</div>
+        <span class="muted small">Odpowiedź z odczytanych danych, bez modelu językowego. Źródła:</span>`;
+      box.insertAdjacentHTML("beforeend", `<div class="answer-sources">${sources.map((s) => `
+      <button class="source" data-doc="${s.doc_id}" data-start="${s.start}" data-end="${s.end}">
+        <span class="source-n">${s.n}</span><span><span class="source-file">${esc(s.filename)} · ${esc(s.field)}</span><span class="source-snip">${esc(s.snippet.slice(0, 220))}</span></span></button>`).join("")}</div>`);
+      if (hits.length) box.insertAdjacentHTML("beforeend", `<p class="muted small answer-more">Pasujące fragmenty dokumentów (${hits.length})</p>`);
+    } else {
+      head.innerHTML = hits.length
+        ? `<span class="muted">Najtrafniejsze fragmenty (${hits.length}) · wyszukiwanie lokalne bez modelu</span>`
+        : "Nie znalazłem fragmentów pasujących do zapytania.";
+    }
     box.insertAdjacentHTML("beforeend", `<div class="answer-sources">${hits.map((h, i) => `
       <button class="source" data-doc="${h.doc_id}" data-start="${h.start}" data-end="${h.end}">
         <span class="source-n">${i + 1}</span><span><span class="source-file">${esc(h.filename)}</span><span class="source-snip">${markTerms(h.snippet, h.terms)}</span></span></button>`).join("")}</div>`);

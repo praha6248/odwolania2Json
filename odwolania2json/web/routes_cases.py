@@ -56,6 +56,22 @@ def router(app: AppState) -> APIRouter:
             raise HTTPException(status_code=400, detail="Wpisz pytanie lub frazę.")
         return {"hits": search(query, store.processed())}
 
+    @api.post("/answer")
+    def answer_without_model(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Answer a typical question from the extracted JSON (config/assistant.yaml) and add matching fragments."""
+        from pathlib import Path
+
+        from ..assistant import search
+        from ..config import DEFAULT_CONFIG_DIR
+        from ..qa import answer, load_intents
+
+        question = str(body.get("question") or "").strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Wpisz pytanie lub frazę.")
+        documents = store.processed()
+        intents = load_intents(Path(app.settings.config_dir or DEFAULT_CONFIG_DIR))
+        return {**answer(question, documents, intents), "hits": search(question, documents)}
+
     @api.post("/ask")
     def ask_documents(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         """Answer a question about the uploaded documents with retrieval over their text (RAG)."""

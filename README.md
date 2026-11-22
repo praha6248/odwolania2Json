@@ -57,7 +57,7 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza pul
 - **Źródło w PDF:** kliknięcie pola podświetla wartość bezpośrednio na stronie dokumentu.
 - **Kreator nowego typu dokumentu:** wgrywasz przykład, zaznaczasz wartości myszką, a kreator proponuje reguły (etykieta, wzorzec, normalizacja), pokazuje wynik na żywo, sprawdza inne wgrane dokumenty i zapisuje zwykły plik YAML.
 - **Eksport do Excela i CSV:** zestawienie dokumentów, arkusz na każdy typ z polami JSON w kolumnach i arkusz z kontrolą formalną.
-- **Wyszukiwarka w dokumentach:** lokalne wyszukiwanie fragmentów (BM25) z podświetleniem słów. Z włączonym LLM ta sama zakładka odpowiada na pytania z cytatami.
+- **Asystent bez modelu:** na typowe pytania (kto reprezentuje odwołującego, jaka kwota i kiedy przelano, czego dotyczy odwołanie, kto jest zamawiającym, numer postępowania, daty, kto podpisał pełnomocnictwo) odpowiada od razu zdaniem złożonym z odczytanych danych, osobno dla każdej sprawy i ze źródłami w dokumencie. Pytania i szablony odpowiedzi są w `config/assistant.yaml`. Pytania o treść pisma (zarzuty, żądania, uzasadnienie) trafiają do lokalnej wyszukiwarki fragmentów (BM25) z podświetleniem słów. Z włączonym LLM ta sama zakładka odpowiada też na pytania swobodne z cytatami.
 - **Anonimizacja PDF (na żądanie):** przycisk „Anonimizuj PDF” albo polecenie `anonymize` tworzy osobną kopię z zaczernionymi imionami i nazwiskami osób (także w odmianie), numerami PESEL, e-mailami i telefonami. Strony kopii są obrazami, więc zakrytego tekstu nie da się skopiować. Oryginał i JSON pozostają bez zmian.
 
 ### Zrzuty ekranu
