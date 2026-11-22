@@ -73,7 +73,7 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza pul
 | ![Streszczenie](docs/screenshots/09-streszczenie.png) **Streszczenie (tryb dokładny):** zarzuty, żądania, terminy i kwoty. | ![Asystent](docs/screenshots/10-asystent-llm.png) **Asystent z LLM:** odpowiedź wyłącznie z odnalezionych fragmentów, z klikalnymi źródłami. |
 | ![Ustawienia](docs/screenshots/11-ustawienia.png) **Ustawienia:** tryb szybki lub dokładny, model, klucz, test połączenia. | |
 
-**Demo całej aplikacji (2 min, bez modelu językowego):** [docs/video/odwolania2json-demo.mp4](docs/video/odwolania2json-demo.mp4): dodanie sprawy ze skanem i wyrokiem spoza puli, JSON, weryfikacja, źródła zaznaczane w PDF i na skanie, klasyfikacja, anonimizacja, sprawy z kontrolą formalną, asystent, kreator nowego typu, ustawienia i eksport.
+**Demo całej aplikacji (3 min):** [docs/video/odwolania2json-demo.mp4](docs/video/odwolania2json-demo.mp4): dodanie sprawy ze skanem i wyrokiem spoza puli, JSON, weryfikacja, źródła zaznaczane w PDF i na skanie, klasyfikacja, anonimizacja, sprawy z kontrolą formalną, asystent, kreator nowego typu, ustawienia i eksport, a na końcu tryb dokładny z Bielikiem-4.5B na karcie graficznej (fragment poniżej).
 
 **Filmik z LLM (65 s):** [docs/video/odwolania2json-llm-gpu.mp4](docs/video/odwolania2json-llm-gpu.mp4): tryb dokładny z modelem Bielik-4.5B uruchomionym w Ollamie na karcie graficznej (RTX 5060 Ti) w sieci Tailscale. Po prawej widać, jak model ładuje się do pamięci karty (5,7 GB VRAM, 100% na GPU), i czasy zapytań: weryfikacja pól 12,6 s, streszczenie 4,4 s, odpowiedź asystenta 1,8 s.
 
