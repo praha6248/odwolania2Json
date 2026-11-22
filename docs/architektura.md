@@ -12,7 +12,7 @@
 ```
 
 1. **Tekst** (`pdftext.py`). `pypdf` wyciąga warstwę tekstową stron. Tekst jest normalizowany: NFC, scalanie akcentów z generatorów typu LaTeX (`˛a` → `ą`), usuwanie miękkich dzielników i stopek „Strona X z Y”. Strony z mniej niż `ocr.min_chars_per_page` znakami trafiają do OCR.
-2. **OCR** (`ocr.py`). Strona jest renderowana przez `pypdfium2`. Silnik wybierany jest według `ocr.engines`: Tesseract z modelem `pol`, jeśli jest dostępny (obraz Docker), inaczej RapidOCR na ONNX Runtime (CPU): najpierw PP-OCRv5 Latin, a strona z mniej niż 80% słów rozpoznanych w polskim słowniku jest czytana ponownie wielojęzycznym PP-OCRv6 i zostaje lepsza wersja (`ocr.rapidocr_model`: `auto`, `v5`, `v6`). Wynik trafia do cache po SHA-1 pliku i wybranym modelu i przechodzi poprawki typowych pomyłek (`o.0.` → `o.o.`, `ž` → `ż`, cyfry/litery).
+2. **OCR** (`ocr.py`). Strona jest renderowana przez `pypdfium2`. Silnik wybierany jest według `ocr.engines` (domyślnie `[rapidocr, tesseract]`): RapidOCR na ONNX Runtime (CPU), a Tesseract z modelem `pol` tylko jako zapas, gdy RapidOCR nie jest zainstalowany. RapidOCR czyta najpierw PP-OCRv5 Latin, a strona z mniej niż 80% słów rozpoznanych w polskim słowniku jest czytana ponownie wielojęzycznym PP-OCRv6 i zostaje lepsza wersja (`ocr.rapidocr_model`: `auto`, `v5`, `v6`). Wynik trafia do cache po SHA-1 pliku i wybranym modelu i przechodzi poprawki typowych pomyłek (`o.0.` → `o.o.`, `ž` → `ż`, cyfry/litery).
 3. **Klasyfikacja** (`classifier.py`). Każdy typ ma w YAML sekcję `classify` z wagami: słowa w nagłówku (`head_keywords`), w całym tekście (`keywords`), wyrażenia regularne (`patterns`) i wskazówki z nazwy pliku (`filename_hints`). Porównanie ignoruje wielkość liter, odstępy i polskie znaki. Wygrywa najwyższy wynik powyżej `min_classification_score`; poniżej progu dokument dostaje pusty JSON `{}`.
 4. **Ekstrakcja** (`engine.py`). Dla wybranego typu:
    - **sekcje**: fragmenty dokumentu wyznaczone regexami `start` i `end` (np. nagłówek, blok „dotyczy”, pierwszy zarzut), do których zawężane są wyszukiwania;
@@ -24,7 +24,7 @@
 ## Przejrzystość ekstrakcji
 
 Każde pole niesie `FieldResult`: wartość, źródło (`rules` albo `llm`), nazwę metody (np. `label:Rachunek odbiorcy`, `keyword:zaniechał unieważnienia`), fragment tekstu i pozycję w dokumencie. Ślad jest dostępny:
-- w interfejsie (zakładka *Źródła*; kliknięcie zaznacza wartość na stronie PDF, a „Pokaż w tekście” podświetla fragment w tekście). Pozycję na stronie wyznacza `locate.py`: linie fragmentu źródłowego, a w razie potrzeby sama wartość, są wyszukiwane w warstwie tekstowej pdfium; przy kilku wystąpieniach wybierane jest najbliższe pozycji fragmentu,
+- w interfejsie (zakładka *Źródła*; kliknięcie zaznacza wartość na stronie PDF, a „Pokaż w tekście” podświetla fragment w tekście). Pozycję na stronie wyznacza `locate.py`: linie fragmentu źródłowego, a w razie potrzeby sama wartość, są wyszukiwane w warstwie tekstowej pdfium; przy kilku wystąpieniach wybierane jest najbliższe pozycji fragmentu. Na skanie bez warstwy tekstowej te same frazy są dopasowywane do linii odczytanych przez RapidOCR razem z ich położeniem (`ocr.ocr_lines`, z cache); z tych samych linii korzysta anonimizacja skanów,
 - w CLI: `python -m odwolania2json extract plik.pdf --trace` albo `run --trace traces/`.
 
 ## Odporność na OCR
