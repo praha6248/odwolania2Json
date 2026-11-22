@@ -1,5 +1,4 @@
 build/
-.claude/
 data_train
 dist/
 *.egg-info/
