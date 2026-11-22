@@ -65,11 +65,13 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza pul
 | | |
 |---|---|
 | ![Lista dokumentów](docs/screenshots/01-dokumenty.png) **Dokumenty:** strefa przeciągania, liczniki, tabela z typem, stroną, numerem postępowania i kompletnością pól, eksport JSON, Excel i CSV. | ![Dokument i JSON](docs/screenshots/02-dokument-json.png) **Analiza dokumentu:** strony PDF obok wyniku JSON. |
-| ![Źródło w PDF](docs/screenshots/03-zrodlo-w-pdf.png) **Przejrzystość:** kliknięcie pola w zakładce *Źródła* zaznacza wartość na stronie PDF. | ![Weryfikacja](docs/screenshots/04-weryfikacja.png) **Weryfikacja:** pola puste, niejednoznaczne lub rozbieżne z LLM, z fragmentem, edycją i zaznaczeniem w PDF. |
+| ![Źródło w PDF](docs/screenshots/03-zrodlo-w-pdf.png) **Przejrzystość:** kliknięcie pola w zakładce *Źródła* zaznacza wartość na stronie PDF. | ![Weryfikacja](docs/screenshots/04-weryfikacja.png) **Weryfikacja:** w trybie dokładnym LLM sprawdza każde pole; tu podał zmyślony NIP i zły powód czynności, więc rozbieżności trafiły do weryfikacji zamiast do wyniku. |
 | ![Sprawy i kontrola formalna](docs/screenshots/05-sprawy-kontrola.png) **Sprawy:** grupowanie po numerze postępowania, zgodność stron, brakujące dokumenty i kontrola formalna. | ![Wyszukiwarka](docs/screenshots/06-wyszukiwarka.png) **Wyszukiwarka bez LLM:** najtrafniejsze fragmenty wszystkich dokumentów. |
 | ![Kreator typu](docs/screenshots/07-kreator-typu.png) **Kreator nowego typu:** zaznaczenie wartości w przykładzie tworzy pole z regułą. | ![Podgląd kreatora](docs/screenshots/08-kreator-podglad.png) **Podgląd na żywo:** wartości pól, wynik JSON, rozpoznanie przykładu i innych dokumentów. |
 | ![Streszczenie](docs/screenshots/09-streszczenie.png) **Streszczenie (tryb dokładny):** zarzuty, żądania, terminy i kwoty. | ![Asystent](docs/screenshots/10-asystent-llm.png) **Asystent z LLM:** odpowiedź wyłącznie z odnalezionych fragmentów, z klikalnymi źródłami. |
 | ![Ustawienia](docs/screenshots/11-ustawienia.png) **Ustawienia:** tryb szybki lub dokładny, model, klucz, test połączenia. | |
+
+**Filmik (65 s):** [docs/video/odwolania2json-llm-gpu.mp4](docs/video/odwolania2json-llm-gpu.mp4): tryb dokładny z modelem Bielik-4.5B uruchomionym w Ollamie na karcie graficznej (RTX 5060 Ti) w sieci Tailscale. Po prawej widać, jak model ładuje się do pamięci karty (5,7 GB VRAM, 100% na GPU), i czasy zapytań: weryfikacja pól 12,6 s, streszczenie 4,4 s, odpowiedź asystenta 1,8 s.
 
 Na telefonie nawigacja jest na dole ekranu, a tabela zamienia się w listę kart:
 
