@@ -7,8 +7,7 @@ SOLUTION="$(cd "$(dirname "$0")" && pwd)"
 REPO="$SOLUTION/repo"
 export O2J_NO_UPDATE_CHECK=1
 export O2J_CACHE_DIR="$REPO/.ocr-cache"
-export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$(nproc)}"
 
 mkdir -p "$SOLUTION/output"
 cd "$REPO"
-"$REPO/.venv/bin/python" -m odwolania2json run -i "$SOLUTION/input" -o "$SOLUTION/output"
+"$REPO/.venv/bin/python" -m odwolania2json run -i "$SOLUTION/input" -o "$SOLUTION/output" --workers 0

@@ -246,6 +246,7 @@ def boxes_to_text(boxes: list[Any], texts: list[str]) -> str:
     return "\n".join(" ".join(i[4] for i in line) for line in lines if line)
 
 
+THREADS = 0
 AUTO_THRESHOLD = 0.8
 AUTO_MARGIN = 0.05
 
@@ -262,6 +263,8 @@ def _rapidocr_engine(model: str = "v6") -> Any:
     from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
     params: dict[str, Any] = {"Global.log_level": "warning", "Global.use_cls": False, "Det.thresh": 0.2, "Det.box_thresh": 0.3}
+    if THREADS:
+        params.update({"EngineConfig.onnxruntime.intra_op_num_threads": THREADS, "EngineConfig.onnxruntime.inter_op_num_threads": 1})
     if model == "v5":
         params.update({"Rec.lang_type": LangRec.LATIN, "Rec.ocr_version": OCRVersion.PPOCRV5, "Rec.model_type": ModelType.MOBILE})
     else:
