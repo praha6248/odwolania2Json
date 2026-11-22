@@ -56,7 +56,13 @@ Typ dokumentu jest ustalany **z treści**, nie z nazwy pliku. Dokument spoza pul
 - **Kontrola formalna sprawy:** dla każdej sprawy aplikacja sprawdza krzyżowo trzy dokumenty: czy odwołujący jest mocodawcą pełnomocnictwa, czy pełnomocnik z odwołania ma pełnomocnictwo, czy tytuł przelewu wskazuje postępowanie, czy opłata poprzedza odwołanie, czy opłata skarbowa pokrywa 17 zł na pełnomocnika i czy odwołanie mieści się w terminie z art. 515 Pzp (5 lub 10 dni, z przesunięciem na dzień roboczy po weekendach i świętach). Reguły są w `config/formal_checks.yaml`.
 - **Źródło w PDF:** kliknięcie pola podświetla wartość bezpośrednio na stronie dokumentu.
 - **Kreator nowego typu dokumentu:** wgrywasz przykład, zaznaczasz wartości myszką, a kreator proponuje reguły (etykieta, wzorzec, normalizacja), pokazuje wynik na żywo, sprawdza inne wgrane dokumenty i zapisuje zwykły plik YAML.
-- **Eksport do Excela i CSV:** zestawienie dokumentów, arkusz na każdy typ z polami JSON w kolumnach i arkusz z kontrolą formalną.
+- **Eksport do Excela i CSV:** zestawienie dokumentów, arkusz na każdy typ z polami JSON w kolumnach i arkusz z kontrolą formalną. Przyciski *Excel* i *CSV* na liście dokumentów albo `GET /api/export.xlsx` i `/api/export.csv`.
+
+  ![Excel: arkusz Dokumenty](docs/screenshots/15-excel-dokumenty.png)
+  ![Excel: arkusz Kontrola formalna](docs/screenshots/16-excel-kontrola.png)
+  ![CSV](docs/screenshots/17-csv.png)
+
+  Arkusze *Odwołanie do KIO*, *Pełnomocnictwo* i *Potwierdzenie przelewu* mają każde pole JSON w osobnej kolumnie (listy numerowane, np. `Odwolujacy[1].nazwa`). CSV jest w UTF-8 z BOM i separatorem `;`, więc Excel otwiera go z polskimi znakami bez importu.
 - **Asystent bez modelu:** na typowe pytania (kto reprezentuje odwołującego, jaka kwota i kiedy przelano, czego dotyczy odwołanie, kto jest zamawiającym, numer postępowania, daty, kto podpisał pełnomocnictwo) odpowiada od razu zdaniem złożonym z odczytanych danych, osobno dla każdej sprawy i ze źródłami w dokumencie. Pytania i szablony odpowiedzi są w `config/assistant.yaml`. Pytania o treść pisma (zarzuty, żądania, uzasadnienie) trafiają do lokalnej wyszukiwarki fragmentów (BM25) z podświetleniem słów. Z włączonym LLM ta sama zakładka odpowiada też na pytania swobodne z cytatami.
 - **Anonimizacja PDF (na żądanie):** przycisk „Anonimizuj PDF” albo polecenie `anonymize` tworzy osobną kopię z zaczernionymi imionami i nazwiskami osób (także w odmianie), numerami PESEL, e-mailami i telefonami (komórkowymi i stacjonarnymi). Działa też na skanach: dane są wyszukiwane w liniach odczytanych przez OCR. Strony kopii są obrazami, więc zakrytego tekstu nie da się skopiować. Oryginał i JSON pozostają bez zmian.
 
