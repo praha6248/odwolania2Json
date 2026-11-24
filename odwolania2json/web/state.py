@@ -48,7 +48,7 @@ class Store:
 
     def processed(self) -> list[dict[str, Any]]:
         """Results of processed documents in upload order."""
-        return [i["result"] for i in self.items.values() if "result" in i]
+        return [i["result"] for i in list(self.items.values()) if "result" in i]
 
 
 def serialize(doc_id: str, result: DocumentResult, settings_labels: dict[str, str], case_spec: dict[str, str] | None = None) -> dict[str, Any]:
@@ -85,11 +85,11 @@ class AppState:
         """Map document type names to human readable labels."""
         return {t.name: t.label for t in self.settings.document_types}
 
-    def remember(self, doc_id: str, result: DocumentResult) -> None:
+    def remember(self, doc_id: str, result: DocumentResult, processor: Processor) -> None:
         """Store the serialized result and the extraction context needed for manual corrections."""
         doc_type = self.settings.get_type(result.doc_type) if result.doc_type else None
         self.store.items[doc_id]["result"] = serialize(doc_id, result, self.labels(), doc_type.case if doc_type else None)
-        self.store.items[doc_id]["context"] = getattr(self.processor, "last_context", None) if doc_type else None
+        self.store.items[doc_id]["context"] = getattr(processor, "last_context", None) if doc_type else None
 
     def llm_client(self) -> Any:
         """Return an LLM client for the current settings or fail with a clear message."""

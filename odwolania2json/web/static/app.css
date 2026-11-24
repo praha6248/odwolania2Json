@@ -668,3 +668,22 @@ select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-stro
 .answer-lines { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .answer-lines p { margin: 0; line-height: 1.5; }
 .answer-more { margin: 12px 0 6px; }
+
+dialog.modal-backdrop, dialog.sheet-backdrop { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: var(--text); }
+dialog:not([open]) { display: none; }
+dialog::backdrop { background: transparent; }
+.page-img { background: var(--surface-2); border-radius: var(--r-sm); }
+.table-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.kpi-value, .meter-val, .cell-time, .tab-count, .fact-value, #table-foot, #update-progress-text { font-variant-numeric: tabular-nums; }
+.row-actions { gap: 6px; }
+#update-progress-text, #wz-status { min-height: 1.5em; }
+#undo-list { position: fixed; bottom: 5rem; right: 1rem; z-index: 30; max-width: min(30rem, 95vw); }
+.job-status, .undo-item { padding: 8px 12px; display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; }
+.undo-item { background: var(--surface); box-shadow: var(--shadow); border-radius: var(--r-md); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+[hidden] { display: none !important; }
+#startup { padding: 12px 20px; }
+#document-required form { gap: 8px; }
+body:not([data-ready]) #empty-table { visibility: hidden; }

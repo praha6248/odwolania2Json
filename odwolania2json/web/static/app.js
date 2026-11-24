@@ -120,7 +120,7 @@ async function applyRoute() {
   const [, name, id, tab] = (location.hash || "").split("/");
   const view = Object.keys(ROUTES).find((k) => ROUTES[k] === name);
   if (view === "detail" && id && state.docs.some((d) => d.id === id)) {
-    await openDoc(id, true);
+    if (!await openDoc(id, true)) return;
     const tabKey = Object.keys(TABS).find((k) => TABS[k] === tab);
     if (tabKey) showTab(tabKey);
   } else if (view && view !== "detail") {
@@ -134,11 +134,13 @@ function go(view) {
     if (!state.docs.length) return $("#document-required").showModal();
     return openDoc(state.docs[0].id);
   }
+  openVersion++;
+  const previousView = state.view;
   state.view = view;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `view-${view}`));
-  $("#more-sheet").classList.add("hidden");
+  $("#more-sheet").close();
   const secondary = ["types", "wizard", "settings", "help"].includes(view);
-  if (view === "wizard") openWizard();
+  if (view === "wizard" && (!wz.dirty || !wz.doc)) openWizard();
   $("#more-btn").classList.toggle("active", secondary);
   document.querySelectorAll(".rail-btn[data-go]").forEach((b) => {
     const active = b.dataset.go === (view === "wizard" ? "types" : view);
@@ -147,6 +149,9 @@ function go(view) {
     else b.removeAttribute("aria-current");
   });
   if (view === "assistant") $("#ask-input").focus();
+  if (view === "list" && previousView === "detail" && state.current) {
+    document.querySelector(`#rows [data-id="${CSS.escape(state.current.id)}"]`)?.focus();
+  }
   setHash(view);
   window.scrollTo({ top: 0 });
 }
@@ -180,11 +185,20 @@ function fileStatus(doc, review) {
 }
 
 /** Render the overview table. */
+let tablePage = 0;
+const pageLength = 50;
+
 function renderTable() {
   const query = ($("#table-search").value || $("#search").value).trim().toLowerCase();
   const rows = state.docs.filter((d) => (!state.filter || d.doc_type === state.filter || (state.filter === "none" && !d.doc_type))
     && (!query || `${d.filename} ${subject(d)} ${procedure(d)} ${d.doc_label}`.toLowerCase().includes(query)));
-  $("#rows").innerHTML = rows.map((d) => {
+  tablePage = Math.min(tablePage, Math.max(0, Math.ceil(rows.length / pageLength) - 1));
+  const start = tablePage * pageLength;
+  $("#table-pages").classList.toggle("hidden", rows.length <= pageLength);
+  $("#prev-page").disabled = tablePage === 0;
+  $("#next-page").disabled = start + pageLength >= rows.length;
+  $("#no-matches").classList.toggle("hidden", !state.docs.length || rows.length > 0);
+  $("#rows").innerHTML = rows.slice(start, start + pageLength).map((d) => {
     const fill = completeness(d);
     const pct = fill === null ? null : Math.round(fill * 100);
     const review = reviewItems(d).length;
@@ -203,7 +217,9 @@ function renderTable() {
   }).join("");
   $("#empty-table").classList.toggle("hidden", state.docs.length > 0);
   $("#dropzone").classList.toggle("compact", state.docs.length > 0);
-  $("#table-foot").textContent = state.docs.length ? `${rows.length} z ${state.docs.length} ${plural(state.docs.length, "dokumentu", "dokumentów", "dokumentów")}` : "";
+  const total = `${rows.length} z ${state.docs.length} ${plural(state.docs.length, "dokumentu", "dokumentów", "dokumentów")}`;
+  $("#table-foot").textContent = rows.length > pageLength
+    ? `Wiersze ${start + 1}–${Math.min(start + pageLength, rows.length)} · Pasujące dokumenty: ${total}` : total;
   $("#table-foot").classList.toggle("hidden", !state.docs.length);
   renderKpis();
 }
@@ -234,8 +250,14 @@ function renderChecks(c) {
 }
 
 /** Fetch case groups from the server and render them. */
+let casesVersion = 0;
 async function refreshCases() {
-  state.cases = state.docs.length ? await api("/api/cases").catch(() => []) : [];
+  const version = ++casesVersion;
+  let cases;
+  try { cases = state.docs.length ? await api("/api/cases") : []; }
+  catch (error) { if (version === casesVersion) toast(`Nie odświeżono spraw: ${error.message}`); return; }
+  if (version !== casesVersion) return;
+  state.cases = cases;
   renderCases();
 }
 
@@ -247,6 +269,8 @@ function renderCases() {
   badge.classList.toggle("hidden", !attention);
   const shown = state.casesFilter === "attention" ? state.cases.filter(needsAttention) : state.cases;
   $("#cases-empty").classList.toggle("hidden", shown.length > 0);
+  $("#cases-empty .empty-state span").hidden = state.cases.length > 0;
+  $("#cases-all").hidden = !state.cases.length;
   $("#cases-empty").querySelector("b").textContent = state.cases.length ? "Wszystkie sprawy są kompletne i zgodne" : "Brak spraw";
   document.querySelectorAll("#cases-filter button").forEach((b) => {
     const on = b.dataset.cases === state.casesFilter;
@@ -288,16 +312,26 @@ function updateDoc(doc) {
   renderTable();
 }
 
-/** Open the detail view of a document and show the guide notice that closes with OK. */
+/** Ignore replies for document opens superseded by navigation. */
+let openVersion = 0;
 async function openDoc(id, quiet = false) {
-  const doc = await api(`/api/documents/${id}`);
+  const version = ++openVersion;
+  let doc;
+  try {
+    doc = await api(`/api/documents/${id}`);
+  } catch (error) {
+    if (version === openVersion) toast(`Nie udało się otworzyć dokumentu: ${error.message}`);
+    return false;
+  }
+  if (version !== openVersion) return false;
   updateDoc(doc);
   $("#summary-card").classList.add("hidden");
   renderDetail(doc);
   state.tab = "json";
   go("detail");
   showTab("json");
-  if (!quiet) showDocNotice(doc);
+  if (!quiet) $("#d-title").focus();
+  return true;
 }
 
 /** Show a prominent modal summary of the opened document that closes only when the user clicks OK. */
@@ -337,7 +371,7 @@ function showDocNotice(doc) {
       </div>`;
     secondary.textContent = "Przejdź do weryfikacji";
     secondary.classList.remove("hidden");
-    secondary.onclick = () => { modal.classList.add("hidden"); showTab("review"); };
+    secondary.onclick = () => { modal.close(); showTab("review"); };
   } else {
     icon.className = "doc-modal-icon ok";
     icon.innerHTML = ICON_OK;
@@ -349,9 +383,9 @@ function showDocNotice(doc) {
       </div>`;
     secondary.textContent = "Pokaż źródła pól";
     secondary.classList.remove("hidden");
-    secondary.onclick = () => { modal.classList.add("hidden"); showTab("fields"); };
+    secondary.onclick = () => { modal.close(); showTab("fields"); };
   }
-  modal.classList.remove("hidden");
+  modal.showModal();
   $("#doc-modal-ok").focus();
 }
 
@@ -374,7 +408,7 @@ function renderDetail(doc) {
   ].map(([l, v]) => `<div><div class="fact-label">${l}</div><div class="fact-value">${v}</div></div>`).join("");
   if ($("#d-pdf").dataset.id !== doc.id) {
     $("#d-pdf").dataset.id = doc.id;
-    renderPages(doc);
+    pagesRendered = renderPages(doc);
   }
   $("#d-json").innerHTML = doc.data && Object.keys(doc.data).length ? highlight(doc.data)
     : `<div class="empty-state"><b>Nie udało się dopasować typu dokumentu</b><span>${esc(doc.message || "")}</span><span>Wynikiem jest pusty JSON <code>{}</code>. Jeśli to pomyłka, wybierz typ z listy w nagłówku.</span></div>`;
@@ -392,18 +426,23 @@ function renderDetail(doc) {
 }
 
 /** Highlight where a field value sits in the PDF preview and scroll to it. */
+let locateVersion = 0;
 async function locateField(doc, field) {
   state.located = field;
   document.querySelectorAll(".src.located").forEach((el) => el.classList.remove("located"));
   document.querySelectorAll(".src.clickable").forEach((el) => { if (doc.fields[Number(el.dataset.field)].field === field) el.classList.add("located"); });
   document.querySelectorAll("#d-pdf .hl").forEach((el) => el.remove());
+  const request = ++locateVersion;
   const res = await api(`/api/documents/${doc.id}/locate/${encodeURIComponent(field)}`).catch(() => ({ boxes: [] }));
+  if (request !== locateVersion || state.current?.id !== doc.id) return;
   if (!res.boxes.length) {
     toast(res.reason || "Nie znaleziono tego fragmentu w warstwie tekstowej PDF. Pokazuję go w zakładce Tekst.");
     const f = doc.fields.find((x) => x.field === field);
     if (f && f.start !== null) { showTab("text"); renderText(doc, [f.start, f.end]); }
     return;
   }
+  await pagesRendered;
+  if (request !== locateVersion || state.current?.id !== doc.id) return;
   const figures = document.querySelectorAll("#d-pdf .page");
   let first = null;
   res.boxes.forEach(({ page, rects }) => {
@@ -419,19 +458,36 @@ async function locateField(doc, field) {
       first = first || el;
     });
   });
-  if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (first) first.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
 }
 
 /** Render the PDF preview as server-rendered page images (works without a browser PDF plugin). */
+let pagesRendered;
+const pageManifests = new Map();
+function pageManifest(id) {
+  if (!pageManifests.has(id)) {
+    const result = api(`/api/documents/${id}/pages`).catch(error => {
+      pageManifests.delete(id);
+      throw error;
+    });
+    pageManifests.set(id, result);
+  }
+  return pageManifests.get(id);
+}
+
 async function renderPages(doc) {
+  locateVersion++;
   state.located = null;
   const box = $("#d-pdf");
   box.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
   try {
-    const { pages } = await api(`/api/documents/${doc.id}/pages`);
+    const { pages, sizes } = await pageManifest(doc.id);
+    if (box.dataset.id !== doc.id) return;
     box.innerHTML = `<div class="pages">${Array.from({ length: pages }, (_, i) => `
-      <figure class="page"><div class="page-img"><img loading="${i < 2 ? "eager" : "lazy"}" src="/api/documents/${doc.id}/pages/${i + 1}.png" alt="Strona ${i + 1} z ${pages}: ${esc(doc.filename)}"></div><figcaption>Strona ${i + 1} z ${pages}</figcaption></figure>`).join("")}</div>`;
+      <figure class="page"><div class="page-img" style="aspect-ratio:${sizes[i][0]} / ${sizes[i][1]}"><img loading="${i < 2 ? "eager" : "lazy"}" src="/api/documents/${doc.id}/pages/${i + 1}.png" alt="Strona ${i + 1} z ${pages}: ${esc(doc.filename)}"></div><figcaption>Strona ${i + 1} z ${pages}</figcaption></figure>`).join("")}</div>`;
   } catch (e) {
+    if (box.dataset.id !== doc.id) return;
+    delete box.dataset.id;
     box.innerHTML = `<div class="empty-state"><b>Nie udało się wyświetlić podglądu</b><a class="btn" href="/api/documents/${doc.id}/pdf" target="_blank">Otwórz PDF</a></div>`;
   }
 }
@@ -461,6 +517,8 @@ function reviewReason(f) {
 }
 
 /** Render the review queue with editable values. */
+const fieldDrafts = new Map();
+const savingFields = new Set();
 function renderReview(doc, items) {
   if (!items.length) {
     $("#d-review").innerHTML = '<div class="empty-state"><b>Nic do weryfikacji</b><span>Wszystkie wymagane pola mają wartość. Odczytane wartości i ich źródła sprawdzisz w zakładce Źródła.</span></div>';
@@ -471,9 +529,10 @@ function renderReview(doc, items) {
     const complex = f.value !== null && typeof f.value === "object" || (f.llm_value !== null && typeof f.llm_value === "object");
     const shown = f.value === null || f.value === undefined ? "" : complex ? JSON.stringify(f.value, null, 1) : String(f.value);
     const llm = f.llm_value === null || f.llm_value === undefined ? null : complex ? JSON.stringify(f.llm_value) : String(f.llm_value);
+    const draft = fieldDrafts.get(`${doc.id}:${f.field}`) ?? shown;
     const input = complex
-      ? `<textarea data-edit="${esc(f.field)}" data-original="${esc(shown)}" aria-label="Wartość pola ${esc(f.field)}">${esc(shown)}</textarea>`
-      : `<input data-edit="${esc(f.field)}" data-original="${esc(shown)}" value="${esc(shown)}" placeholder="brak wartości" aria-label="Wartość pola ${esc(f.field)}">`;
+      ? `<textarea data-edit="${esc(f.field)}" data-original="${esc(shown)}" aria-label="Wartość pola ${esc(f.field)}">${esc(draft)}</textarea>`
+      : `<input data-edit="${esc(f.field)}" data-original="${esc(shown)}" value="${esc(draft)}" placeholder="brak wartości" aria-label="Wartość pola ${esc(f.field)}">`;
     return `<div class="review-item ${done ? "done" : ""}">
       <div class="review-top"><span class="review-name">${esc(f.field)}</span><span class="status ${f.llm_check === "rozbieżne" ? "bad" : "warn"}">${esc(reviewReason(f))}</span></div>
       ${llm !== null ? renderDiff(f) : ""}
@@ -499,29 +558,50 @@ function renderDiff(f) {
 
 /** Save a manually corrected field value. */
 async function saveField(field, raw) {
-  let value = raw;
   const trimmed = String(raw ?? "").trim();
+  let value = trimmed;
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
       value = JSON.parse(trimmed);
     } catch {
-      return toast("Niepoprawny JSON w polu");
+      return toast(`Pole ${field}: sprawdź składnię JSON i zapisz ponownie.`);
     }
   } else if (trimmed === "") {
     value = null;
   }
-  const doc = await send(`/api/documents/${state.current.id}/fields/${encodeURIComponent(field)}`, "PUT", { value });
-  state.reviewDone.add(`${doc.id}:${field}`);
-  updateDoc(doc);
-  renderDetail(doc);
-  refreshCases();
-  toast(`Zapisano pole ${field}`);
+  const id = state.current.id;
+  const key = `${id}:${field}`;
+  if (savingFields.has(key)) return toast("Zapis tego pola jeszcze trwa.");
+  savingFields.add(key);
+  const submittedDraft = fieldDrafts.get(key);
+  try {
+    const doc = await send(`/api/documents/${id}/fields/${encodeURIComponent(field)}`, "PUT", { value });
+    if (fieldDrafts.get(key) === submittedDraft) fieldDrafts.delete(key);
+    state.reviewDone.add(key);
+    if (state.current?.id === id) {
+      updateDoc(doc);
+      renderDetail(doc);
+      if (state.view === "detail" && document.activeElement === document.body) {
+        document.querySelector(`[data-edit="${CSS.escape(field)}"]`)?.focus();
+      }
+    } else {
+      const index = state.docs.findIndex(d => d.id === id);
+      if (index >= 0) state.docs[index] = doc;
+      renderTable();
+    }
+    refreshCases();
+    toast(`Zapisano pole ${field}`);
+  } catch (error) {
+    toast(`Nie zapisano pola ${field}. Spróbuj ponownie. ${error.message}`);
+  } finally {
+    savingFields.delete(key);
+  }
 }
 
 /** Render per-field provenance cards. */
 function renderSources(doc) {
   if (!doc.fields.length) {
-    $("#d-fields").innerHTML = '<div class="empty-state"><b>Brak pól</b><span>Dokument nie został przetworzony żadnym typem.</span></div>';
+    $("#d-fields").innerHTML = '<div class="empty-state"><b>Brak pól</b><span>Dokument nie został przetworzony żadnym typem.</span><button class="btn small" data-choose-type>Wybierz typ dokumentu</button></div>';
     return;
   }
   $("#d-fields").innerHTML = `<div class="src-list">${doc.fields.map((f, i) => {
@@ -568,27 +648,72 @@ function renderClassification(doc) {
 function showTab(name) {
   state.tab = name;
   if (state.view === "detail") setHash("detail", name);
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach(t => {
+    const active = t.dataset.tab === name;
+    t.classList.toggle("active", active);
+    t.setAttribute("aria-selected", String(active));
+    t.tabIndex = active ? 0 : -1;
+  });
   ["json", "review", "fields", "text", "class"].forEach((t) => $(`#tab-${t}`).classList.toggle("hidden", t !== name));
 }
 
 /** Upload and process PDFs. */
-async function upload(files) {
-  const pdfs = [...files].filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+const activeUploads = new Set();
+async function sameFile(a, b) {
+  if (a === b) return true;
+  if (a.name !== b.name || a.size !== b.size || a.lastModified !== b.lastModified) return false;
+  const [left, right] = await Promise.all([a.arrayBuffer(), b.arrayBuffer()]);
+  const bytes = new Uint8Array(right);
+  return new Uint8Array(left).every((value, index) => value === bytes[index]);
+}
+
+async function upload(files, fromWizard = false) {
+  const pdfs = [...files].filter(file => file.name.toLowerCase().endsWith(".pdf"));
+  $("#file").value = "";
   if (!pdfs.length) return toast("Wybierz pliki PDF");
-  const form = new FormData();
-  pdfs.forEach((f) => form.append("files", f));
-  try {
-    const results = await busy(`Analizuję ${pdfs.length} ${plural(pdfs.length, "dokument", "dokumenty", "dokumentów")}…`, () => api("/api/documents", { method: "POST", body: form }));
-    state.docs.push(...results);
-    renderTable();
-    await refreshCases();
-    toast(`Przetworzono: ${results.length}`);
-    if (results.length === 1) openDoc(results[0].id);
-  } catch (e) {
-    toast(`Błąd: ${e.message}`);
-  } finally {
-    $("#file").value = "";
+  const version = openVersion;
+  for (const file of pdfs) {
+    let duplicate = false;
+    for (const active of activeUploads) {
+      if (await sameFile(active, file)) { duplicate = true; break; }
+    }
+    if (duplicate) continue;
+    const key = Array.from(crypto.getRandomValues(new Uint32Array(4))).join("-");
+    const row = document.createElement("div");
+    row.className = "job-status";
+    $(fromWizard ? "#wizard-jobs" : "#upload-jobs").append(row);
+    activeUploads.add(file);
+    async function submit() {
+      row.textContent = `Analizuję: ${file.name}`;
+      const body = new FormData();
+      body.append("files", file);
+      let doc;
+      try {
+        [doc] = await api("/api/documents", { method: "POST", headers: { "Idempotency-Key": key }, body });
+      } catch (error) {
+        row.textContent = `${file.name}: ${error.message} `;
+        const retry = document.createElement("button");
+        retry.className = "btn small";
+        retry.textContent = "Ponów";
+        retry.onclick = submit;
+        const dismiss = retry.cloneNode();
+        dismiss.textContent = "Zamknij";
+        dismiss.onclick = () => { activeUploads.delete(file); row.remove(); };
+        row.append(retry, dismiss);
+        return;
+      }
+      activeUploads.delete(file);
+      row.remove();
+      if (!state.docs.some(d => d.id === doc.id)) state.docs.push(doc);
+      renderTable();
+      await refreshCases();
+      if (fromWizard && state.view === "wizard" && version === openVersion) {
+        wz.doc = doc.id;
+        await openWizard();
+      }
+      if (!fromWizard && pdfs.length === 1 && state.view === "list" && version === openVersion) openDoc(doc.id);
+    }
+    await submit();
   }
 }
 
@@ -713,7 +838,7 @@ async function loadLlm() {
 
 /** Current LLM form values. */
 function llmForm(extra = {}) {
-  return { enabled: $("#llm-enabled").checked, base_url: $("#llm-url").value, model: $("#llm-model").value, api_key: $("#llm-key").value, ...extra };
+  return { enabled: $("#llm-enabled").checked, base_url: $("#llm-url").value.trim(), model: $("#llm-model").value.trim(), api_key: $("#llm-key").value, ...extra };
 }
 
 /** Save LLM settings. */
@@ -857,7 +982,13 @@ function openUpdate() {
       : "Pliki są już aktualne. Wystarczy ponowne uruchomienie.";
     action.textContent = "Aktualizuj";
     action.classList.remove("hidden");
-    action.onclick = startUpdate;
+    action.onclick = async () => {
+      try { await startUpdate(); }
+      catch (error) {
+        $("#update-progress-text").textContent = `Nie udało się sprawdzić postępu. Spróbuj ponownie. ${error.message}`;
+        action.disabled = false;
+      }
+    };
   } else {
     $("#update-sub").textContent = `${u.current} → ${u.latest}`;
     $("#update-text").textContent = "Ta instancja działa ze źródeł lub w Dockerze. Pobierz nową wersję ze strony wydań albo zaktualizuj repozytorium (git pull).";
@@ -866,7 +997,7 @@ function openUpdate() {
     action.onclick = () => window.open(u.url, "_blank");
   }
   modal.querySelector(".form-foot").classList.toggle("hidden", action.classList.contains("hidden") && !u.url);
-  modal.classList.remove("hidden");
+  modal.showModal();
 }
 
 /** Download the patch and follow its progress. */
@@ -897,7 +1028,7 @@ async function startUpdate() {
   }
 }
 
-const wz = { doc: null, fields: {}, selection: null, timer: null, touchedName: false };
+const wz = { previewVersion: 0, dirty: false, doc: null, fields: {}, selection: null, timer: null, touchedName: false };
 
 /** Parse "phrase: weight" lines into a keyword map. */
 function parseWeights(text) {
@@ -937,7 +1068,9 @@ async function openWizard() {
     ? docs.map((d) => `<option value="${d.id}">${esc(d.filename)} · ${esc(d.doc_label)}</option>`).join("")
     : '<option value="">Najpierw dodaj przykładowy PDF</option>';
   if (!docs.length) {
-    $("#wz-text").textContent = "Dodaj przykładowy PDF przyciskiem obok.";
+    $("#wz-text").value = "";
+    $("#wz-text").placeholder = "Dodaj przykładowy PDF przyciskiem obok.";
+    $("#wz-add").disabled = true;
     return;
   }
   const pick = docs.find((d) => d.id === wz.doc) || docs.find((d) => !d.doc_type) || docs[0];
@@ -947,11 +1080,19 @@ async function openWizard() {
 
 /** Show a sample document and optionally suggest keywords from it. */
 async function selectSample(id, suggest) {
+  wz.previewVersion++;
   wz.doc = id;
+  wz.selection = null;
+  $("#wz-add").disabled = true;
+  $("#wz-selection").textContent = "Nic nie zaznaczono";
   const doc = await api(`/api/documents/${id}`).catch(() => null);
-  $("#wz-text").textContent = doc && doc.text ? doc.text : "Ten dokument nie ma tekstu.";
+  if (wz.doc !== id) return;
+  $("#wz-text").value = doc?.text || "";
+  $("#wz-text").placeholder = "Ten dokument nie ma tekstu.";
+  if (!doc?.text) return;
   if (suggest) {
     const kw = await api(`/api/wizard/keywords/${id}`).catch(() => ({}));
+    if (wz.doc !== id || wz.dirty) return schedulePreview();
     $("#wz-head").value = formatWeights(kw.head_keywords);
     $("#wz-kw").value = formatWeights(kw.keywords);
   }
@@ -960,24 +1101,19 @@ async function selectSample(id, suggest) {
 
 /** Character offsets of the current selection inside the sample text. */
 function selectionOffsets() {
-  const sel = window.getSelection();
   const box = $("#wz-text");
-  if (!sel.rangeCount || sel.isCollapsed) return null;
-  const range = sel.getRangeAt(0);
-  if (!box.contains(range.startContainer) || !box.contains(range.endContainer)) return null;
-  const pre = document.createRange();
-  pre.selectNodeContents(box);
-  pre.setEnd(range.startContainer, range.startOffset);
-  const start = pre.toString().length;
-  return { start, end: start + range.toString().length, text: range.toString() };
+  const start = box.selectionStart, end = box.selectionEnd;
+  if (start === end) return null;
+  // The API indexes Unicode code points, the textarea indexes UTF-16 units.
+  return { start: [...box.value.slice(0, start)].length, end: [...box.value.slice(0, end)].length,
+    text: box.value.slice(start, end) };
 }
 
 /** Reflect the current selection in the selection bar. */
 function updateSelection() {
   if (state.view !== "wizard") return;
   const sel = selectionOffsets();
-  if (sel && sel.text.trim()) wz.selection = sel;
-  else if (!sel) return;
+  wz.selection = sel?.text.trim() ? sel : null;
   $("#wz-selection").innerHTML = wz.selection ? `Zaznaczono: <b>${esc(wz.selection.text.trim().slice(0, 60))}</b>` : "Nic nie zaznaczono";
   $("#wz-add").disabled = !wz.selection;
 }
@@ -986,12 +1122,16 @@ function updateSelection() {
 async function addWizardField() {
   if (!wz.selection || !wz.doc) return;
   try {
+    const selected = wz.selection;
+    const id = wz.doc;
     const s = await api("/api/wizard/suggest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: wz.doc, start: wz.selection.start, end: wz.selection.end }) });
+    if (wz.doc !== id || wz.selection?.start !== selected.start || wz.selection?.end !== selected.end) return;
     let name = s.name;
     for (let i = 2; wz.fields[name]; i++) name = `${s.name}_${i}`;
     wz.fields[name] = s.field;
     wz.selection = null;
-    window.getSelection().removeAllRanges();
+    $("#wz-text").setSelectionRange(0, 0);
+    wz.dirty = true;
     $("#wz-selection").textContent = "Nic nie zaznaczono";
     $("#wz-add").disabled = true;
     renderWizardFields();
@@ -1027,6 +1167,7 @@ function renderWizardFields(values = {}) {
 
 /** Re-run the preview shortly after the last change. */
 function schedulePreview() {
+  wz.previewVersion++;
   clearTimeout(wz.timer);
   wz.timer = setTimeout(runPreview, 250);
 }
@@ -1034,10 +1175,17 @@ function schedulePreview() {
 /** Run the draft type on the sample and show the result, score and collisions. */
 async function runPreview() {
   if (!wz.doc) return;
+  const version = wz.previewVersion;
   try {
     const p = await api("/api/wizard/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc_id: wz.doc, draft: wizardDraft() }) });
+    if (version !== wz.previewVersion) return;
     const values = Object.fromEntries(p.fields.map((f) => [f.field, f.value]));
-    renderWizardFields(values);
+    for (const input of document.querySelectorAll("[data-rename]")) {
+      const value = values[input.dataset.rename];
+      const output = input.closest(".wz-field").querySelector(".wz-value");
+      output.classList.toggle("empty", value == null);
+      output.textContent = value == null ? "brak wartości" : typeof value === "object" ? JSON.stringify(value) : value;
+    }
     $("#wz-json").innerHTML = highlight(p.data);
     $("#wz-yaml").textContent = p.yaml;
     $("#wz-status").innerHTML = p.recognized
@@ -1051,6 +1199,7 @@ async function runPreview() {
     if (!parts.length && p.samples.length) parts.push(`<div class="wz-ok">Nie koliduje z ${p.samples.length} ${plural(p.samples.length, "innym dokumentem", "innymi dokumentami", "innymi dokumentami")}.</div>`);
     $("#wz-samples").innerHTML = parts.join("");
   } catch (e) {
+    if (version !== wz.previewVersion) return;
     $("#wz-status").innerHTML = `<span class="warn">${esc(e.message)}</span>`;
   }
 }
@@ -1063,7 +1212,10 @@ async function saveWizard(overwrite = false) {
     for (const d of state.docs.filter((x) => !x.doc_type)) {
       updateDoc(await api(`/api/documents/${d.id}/reprocess`, { method: "POST" }));
     }
+    wz.dirty = false;
+    wz.touchedName = false;
     wz.fields = {};
+    renderWizardFields();
     ["#wz-label", "#wz-name", "#wz-head", "#wz-kw"].forEach((s) => { $(s).value = ""; });
     await loadInfo();
     await refreshCases();
@@ -1093,20 +1245,134 @@ async function loadInfo() {
   }).catch(() => {});
 }
 
-/** Remove one document after confirmation. */
+/** Remove the row immediately; the server retains its editable result briefly for Undo. */
 async function deleteDoc(id) {
-  const doc = state.docs.find((d) => d.id === id);
-  if (!doc || !window.confirm(`Usunąć dokument „${doc.filename}” z listy?`)) return;
-  await api(`/api/documents/${id}`, { method: "DELETE" });
-  state.docs = state.docs.filter((d) => d.id !== id);
+  const index = state.docs.findIndex(d => d.id === id);
+  if (index < 0) return;
+  const [doc] = state.docs.splice(index, 1);
+  openVersion++;
   if (state.current?.id === id) state.current = null;
   renderTable();
-  refreshCases();
+  const focusList = () => ($("#rows").children[Math.min(index, $("#rows").children.length - 1)] || $("#btn-upload")).focus();
+  focusList();
+  const restoreRow = restored => {
+    if (!state.docs.some(d => d.id === id)) state.docs.splice(index, 0, restored);
+    renderTable();
+    refreshCases();
+  };
+  try {
+    const { undo_seconds } = await api(`/api/documents/${id}/trash`, { method: "POST" });
+    refreshCases();
+    const notice = document.createElement("div");
+    notice.className = "undo-item";
+    notice.textContent = `Usunięto „${doc.filename}”. `;
+    const undo = document.createElement("button");
+    undo.className = "btn small";
+    undo.textContent = "Cofnij";
+    notice.append(undo);
+    $("#undo-list").append(notice);
+    const expire = () => {
+      notice.remove();
+      pageManifests.delete(id);
+      for (const key of fieldDrafts.keys()) if (key.startsWith(id + ":")) fieldDrafts.delete(key);
+    };
+    let timer = setTimeout(expire, undo_seconds * 1000);
+    undo.onclick = async () => {
+      clearTimeout(timer);
+      undo.disabled = true;
+      try {
+        restoreRow(await api(`/api/documents/${id}/restore`, { method: "POST" }));
+        notice.remove();
+        focusList();
+      } catch (error) {
+        toast(`Nie udało się przywrócić dokumentu: ${error.message}`);
+        undo.disabled = false;
+        timer = setTimeout(expire, 3000);
+      }
+    };
+  } catch (error) {
+    // The server may have accepted the deletion before the connection broke.
+    try {
+      restoreRow(await api(`/api/documents/${id}/restore`, { method: "POST" }));
+    } catch {
+      restoreRow(doc);
+    }
+    toast(`Nie potwierdzono usunięcia: ${error.message}`);
+  }
 }
 
 /** Wire up event handlers. */
 function bind() {
-  $("#document-required").addEventListener("cancel", event => event.preventDefault());
+  $("#required-upload").onclick = () => {
+    $("#document-required").close();
+    go("list");
+    $("#file").click();
+  };
+  $("#d-fields").addEventListener("click", event => {
+    if (event.target.closest("[data-choose-type]")) $("#d-type").focus();
+  });
+  $("#cases-all").onclick = () => {
+    state.casesFilter = "all";
+    renderCases();
+    document.querySelector('[data-cases="all"]').focus();
+  };
+  $("#doc-info").onclick = () => showDocNotice(state.current);
+  $("#prev-page").onclick = () => { tablePage--; renderTable(); };
+  $("#next-page").onclick = () => { tablePage++; renderTable(); };
+  $("#reset-search").onclick = () => {
+    $("#table-search").value = $("#search").value = state.filter = "";
+    renderFilter();
+    renderTable();
+    $("#table-search").focus();
+  };
+  $("#d-review").addEventListener("input", event => {
+    const input = event.target.closest("[data-edit]");
+    if (!input) return;
+    const key = `${state.current.id}:${input.dataset.edit}`;
+    if (input.value === input.dataset.original) fieldDrafts.delete(key);
+    else fieldDrafts.set(key, input.value);
+  });
+  $("#view-wizard").addEventListener("input", () => { wz.dirty = true; });
+  window.addEventListener("beforeunload", event => {
+    if (wz.dirty || fieldDrafts.size || activeUploads.size) { event.preventDefault(); event.returnValue = ""; }
+  });
+  // Keep the native movable caret in WebView while protecting the source text.
+  $("#wz-text").addEventListener("beforeinput", event => event.preventDefault());
+  $("#wz-text").addEventListener("select", updateSelection);
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.setAttribute("role", "tab");
+    tab.id = "control-" + tab.dataset.tab;
+    const panel = $("#tab-" + tab.dataset.tab);
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", tab.id);
+    tab.setAttribute("aria-controls", panel.id);
+  });
+  $(".tabs").addEventListener("keydown", event => {
+    const tabs = [...document.querySelectorAll(".tab")];
+    const i = tabs.indexOf(event.target);
+    const next = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: tabs.length - 1 }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    const tab = tabs[(next + tabs.length) % tabs.length];
+    showTab(tab.dataset.tab);
+    tab.focus();
+  });
+  let intentTimer;
+  const rows = $("#rows");
+  function prefetch(event) {
+    clearTimeout(intentTimer);
+    const id = event.target.closest("tr")?.dataset.id;
+    if (id) intentTimer = setTimeout(() => pageManifest(id).catch(() => {}), 220);
+  }
+  rows.addEventListener("pointerover", prefetch);
+  rows.addEventListener("focusin", prefetch);
+  rows.addEventListener("pointerleave", () => clearTimeout(intentTimer));
+  rows.addEventListener("keydown", event => {
+    if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+    const row = event.target.closest("tr");
+    const next = event.key === "ArrowDown" ? row?.nextElementSibling : row?.previousElementSibling;
+    if (next) { event.preventDefault(); next.focus(); }
+  });
   document.addEventListener("click", (e) => {
     const target = e.target.closest("[data-go]");
     if (target) { e.preventDefault(); go(target.dataset.go); }
@@ -1129,6 +1395,7 @@ function bind() {
   $("#type-filter").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    tablePage = 0;
     state.filter = b.dataset.type;
     renderFilter();
     renderTable();
@@ -1158,17 +1425,24 @@ function bind() {
     if (accept) {
       const field = accept.dataset.accept;
       const input = $(`[data-edit="${CSS.escape(field)}"]`);
-      state.reviewDone.add(`${state.current.id}:${field}`);
       if (input && input.value !== input.dataset.original) return saveField(field, input.value);
+      state.reviewDone.add(`${state.current.id}:${field}`);
       renderDetail(state.current);
     }
   });
   $("#review-banner").addEventListener("click", () => showTab(Number($("#review-count").textContent) ? "review" : "fields"));
   $("#d-type").addEventListener("change", async (e) => {
     if (!state.current) return;
+    const id = state.current.id;
     const q = e.target.value ? `?doc_type=${encodeURIComponent(e.target.value)}` : "";
-    await api(`/api/documents/${state.current.id}/reprocess${q}`, { method: "POST" });
-    await openDoc(state.current.id, true);
+    e.target.disabled = true;
+    try {
+      await api(`/api/documents/${id}/reprocess${q}`, { method: "POST" });
+      if (state.current?.id === id && state.view === "detail") await openDoc(id, true);
+    } catch (error) {
+      if (state.current?.id === id) $("#d-type").value = state.current.doc_type || "";
+      toast(`Nie zmieniono typu: ${error.message}`);
+    } finally { $("#d-type").disabled = false; }
     refreshCases();
   });
   $("#btn-copy").addEventListener("click", copyJson);
@@ -1181,20 +1455,20 @@ function bind() {
   $("#answers").addEventListener("click", async (e) => {
     const s = e.target.closest(".source");
     if (!s) return;
-    await openDoc(s.dataset.doc, true);
+    if (!await openDoc(s.dataset.doc, true)) return;
     showTab("text");
     renderText(state.current, [Number(s.dataset.start), Number(s.dataset.end)]);
   });
   $("#mode-switch").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
   $("#update-btn").addEventListener("click", openUpdate);
   $("#more-btn").addEventListener("click", () => {
-    $("#more-sheet").classList.remove("hidden");
+    $("#more-sheet").showModal();
     $("#more-sheet .sheet-item").focus();
   });
-  $("#more-sheet").addEventListener("click", (e) => { if (e.target.id === "more-sheet") $("#more-sheet").classList.add("hidden"); });
-  $("#update-close").addEventListener("click", () => $("#update-modal").classList.add("hidden"));
-  $("#update-modal").addEventListener("click", (e) => { if (e.target.id === "update-modal") $("#update-modal").classList.add("hidden"); });
-  $("#doc-modal-ok")?.addEventListener("click", () => $("#doc-modal").classList.add("hidden"));
+  $("#more-sheet").addEventListener("click", (e) => { if (e.target.id === "more-sheet") $("#more-sheet").close(); });
+  $("#update-close").addEventListener("click", () => $("#update-modal").close());
+  $("#update-modal").addEventListener("click", (e) => { if (e.target.id === "update-modal") $("#update-modal").close(); });
+  $("#doc-modal-ok")?.addEventListener("click", () => $("#doc-modal").close());
   $("#llm-presets")?.addEventListener("click", (e) => {
     const card = e.target.closest(".preset-card");
     if (!card) return;
@@ -1217,7 +1491,13 @@ function bind() {
   });
   $("#llm-url")?.addEventListener("input", syncPresetHighlight);
   $("#llm-model")?.addEventListener("input", syncPresetHighlight);
-  $("#llm-save").addEventListener("click", saveLlm);
+  $("#llm-save").addEventListener("click", async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try { await saveLlm(); }
+    catch (error) { toast(`Nie zapisano ustawień: ${error.message}`); }
+    finally { button.disabled = false; }
+  });
   $("#llm-test").addEventListener("click", testLlm);
   $("#llm-enabled").addEventListener("change", (e) => { $("#llm-enabled-label").textContent = e.target.checked ? "Włączony" : "Wyłączony"; });
   $("#btn-upload").addEventListener("click", () => $("#file").click());
@@ -1227,9 +1507,14 @@ function bind() {
   $("#btn-export").addEventListener("click", exportAll);
   $("#btn-clear").addEventListener("click", async () => {
     if (!state.docs.length || !window.confirm(`Usunąć wszystkie dokumenty (${state.docs.length}) z listy?`)) return;
-    await Promise.all(state.docs.map((d) => api(`/api/documents/${d.id}`, { method: "DELETE" })));
-    state.docs = [];
-    state.current = null;
+    const results = await Promise.allSettled(state.docs.slice().map(async doc => {
+      await api(`/api/documents/${doc.id}`, { method: "DELETE" });
+      state.docs = state.docs.filter(d => d.id !== doc.id);
+      pageManifests.delete(doc.id);
+      for (const key of fieldDrafts.keys()) if (key.startsWith(doc.id + ":")) fieldDrafts.delete(key);
+      if (state.current?.id === doc.id) state.current = null;
+    }));
+    if (results.some(r => r.status === "rejected")) toast("Część dokumentów pozostała na liście. Spróbuj ponownie.");
     renderTable();
     refreshCases();
   });
@@ -1244,24 +1529,18 @@ function bind() {
   $("#wz-doc").addEventListener("change", (e) => selectSample(e.target.value, !Object.keys(wz.fields).length));
   $("#wz-upload").addEventListener("click", () => $("#wz-file").click());
   $("#wz-file").addEventListener("change", async (e) => {
-    const form = new FormData();
-    [...e.target.files].forEach((f) => form.append("files", f));
+    const files = [...e.target.files];
     e.target.value = "";
-    try {
-      const results = await busy("Wczytuję przykład…", () => api("/api/documents", { method: "POST", body: form }));
-      state.docs.push(...results);
-      renderTable();
-      if (results[0]) { wz.doc = results[0].id; openWizard(); }
-    } catch (err) { toast(err.message); }
+    await upload(files, true);
   });
-  document.addEventListener("selectionchange", updateSelection);
   $("#wz-add").addEventListener("click", addWizardField);
   $("#wz-label").addEventListener("input", () => { if (!wz.touchedName) $("#wz-name").value = slugify($("#wz-label").value); schedulePreview(); });
-  $("#wz-name").addEventListener("input", () => { wz.touchedName = true; });
+  $("#wz-name").addEventListener("input", () => { wz.touchedName = true; schedulePreview(); });
   ["#wz-head", "#wz-kw"].forEach((sel) => $(sel).addEventListener("input", schedulePreview));
   $("#wz-fields").addEventListener("click", (e) => {
     const b = e.target.closest("[data-remove]");
     if (!b) return;
+    wz.dirty = true;
     delete wz.fields[b.dataset.remove];
     renderWizardFields();
     schedulePreview();
@@ -1277,10 +1556,10 @@ function bind() {
     renderWizardFields();
     schedulePreview();
   });
-  $("#search").addEventListener("input", () => { if (state.view !== "list") go("list"); renderTable(); });
-  $("#table-search").addEventListener("input", renderTable);
+  $("#search").addEventListener("input", () => { $("#table-search").value = $("#search").value; tablePage = 0; if (state.view !== "list") go("list"); renderTable(); });
+  $("#table-search").addEventListener("input", () => { $("#search").value = $("#table-search").value; tablePage = 0; renderTable(); });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { $("#update-modal").classList.add("hidden"); $("#more-sheet").classList.add("hidden"); }
+    if (document.querySelector("dialog[open]")) return;
     if (e.key === "/" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) {
       e.preventDefault();
       $("#search").focus();
@@ -1289,12 +1568,35 @@ function bind() {
   const dz = $("#dropzone");
   $("#dropzone").setAttribute("tabindex", "0");
   let depth = 0;
-  document.addEventListener("dragenter", (e) => { e.preventDefault(); depth += 1; dz.classList.add("over"); if (state.view !== "list") go("list"); });
+  document.addEventListener("dragenter", (e) => { e.preventDefault(); depth += 1; dz.classList.add("over"); });
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("dragleave", (e) => { e.preventDefault(); depth = Math.max(0, depth - 1); if (!depth) dz.classList.remove("over"); });
-  document.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; dz.classList.remove("over"); upload(e.dataTransfer.files); });
+  document.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; dz.classList.remove("over"); if (state.view !== "list") go("list"); upload(e.dataTransfer.files); });
 }
 
 bind();
 window.addEventListener("hashchange", applyRoute);
-loadInfo().then(loadLlm).then(() => api("/api/documents")).then(async (docs) => { state.docs = docs || []; renderTable(); await refreshCases(); await applyRoute(); document.body.dataset.ready = "1"; });
+async function initialize() {
+  $("#btn-upload").disabled = true;
+  $("#dropzone").inert = true;
+  $("#startup").hidden = false;
+  $("#startup-message").textContent = "Wczytuję dokumenty…";
+  $("#startup-retry").hidden = true;
+  try {
+    const [, docs] = await Promise.all([loadInfo(), api("/api/documents"), loadLlm()]);
+    const loaded = new Set(docs.map(doc => doc.id));
+    state.docs = docs.concat(state.docs.filter(doc => !loaded.has(doc.id)));
+    renderTable();
+    await refreshCases();
+    await applyRoute();
+    document.body.dataset.ready = "1";
+    $("#startup").hidden = true;
+    $("#btn-upload").disabled = false;
+    $("#dropzone").inert = false;
+  } catch (error) {
+    $("#startup-message").textContent = `Nie udało się wczytać aplikacji: ${error.message}`;
+    $("#startup-retry").hidden = false;
+  }
+}
+$("#startup-retry").onclick = initialize;
+initialize();

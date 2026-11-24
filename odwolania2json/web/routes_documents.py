@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import shutil
 from pathlib import Path
+from threading import Lock, Timer
 from typing import Any
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from ..cases import case_values, key
@@ -19,16 +22,39 @@ def router(app: AppState) -> APIRouter:
     api = APIRouter(prefix="/api/documents")
     store = app.store
 
+    processing = Lock()
+
     @api.post("")
-    async def upload(files: list[UploadFile] = File(...)) -> list[dict[str, Any]]:
-        """Accept one or more PDFs, process them and return extraction results."""
+    def upload(files: list[UploadFile] = File(...), idempotency_key: str | None = Header(None)) -> list[dict[str, Any]]:
+        """Run extraction in a worker and replay single-file retries within this session."""
+        if idempotency_key and len(files) != 1:
+            raise HTTPException(400, "Klucz ponowienia dotyczy jednego pliku.")
         out = []
         for upload_file in files:
-            if not (upload_file.filename or "").lower().endswith(".pdf"):
+            filename = upload_file.filename or ""
+            if not filename.lower().endswith(".pdf"):
                 continue
-            doc_id, path = store.add(upload_file.filename or "document.pdf", await upload_file.read())
-            app.remember(doc_id, app.processor.process_pdf(path))
-            out.append(store.items[doc_id]["result"])
+            content = upload_file.file.read()
+            digest = hashlib.sha256(content).digest() if idempotency_key else None
+            with processing:
+                if idempotency_key:
+                    previous = next((item for item in list(store.items.values())
+                                     if item.get("upload_key") == idempotency_key), None)
+                    if previous:
+                        if previous["digest"] != digest or previous["filename"] != Path(filename).name:
+                            raise HTTPException(409, "Klucz ponowienia został już użyty dla innego pliku.")
+                        out.append(previous["result"])
+                        continue
+                doc_id, path = store.add(filename, content)
+                processor = app.processor
+                try:
+                    app.remember(doc_id, processor.process_pdf(path), processor)
+                except Exception:
+                    store.remove(doc_id)
+                    raise
+                item = store.items[doc_id]
+                item.update(upload_key=idempotency_key, digest=digest)
+                out.append(item["result"])
         return out
 
     @api.get("")
@@ -44,8 +70,38 @@ def router(app: AppState) -> APIRouter:
     @api.delete("/{doc_id}")
     def delete(doc_id: str) -> dict[str, str]:
         """Forget a document."""
-        store.remove(doc_id)
+        with processing:
+            store.remove(doc_id)
         return {"status": "deleted"}
+
+    # Keep recoverable deletions outside the active store so exports and case checks
+    # immediately reflect them. A closed client cannot leave a deleted PDF behind.
+    trash: dict[str, dict[str, Any]] = {}
+
+    def expire(doc_id: str, item: dict[str, Any]) -> None:
+        with processing:
+            if trash.get(doc_id) is item:
+                trash.pop(doc_id)
+                shutil.rmtree(item["path"].parent, ignore_errors=True)
+
+    @api.post("/{doc_id}/trash")
+    def trash_document(doc_id: str) -> dict[str, int]:
+        with processing:
+            if doc_id not in trash:
+                store.get(doc_id)
+                item = dict(store.items.pop(doc_id))
+                trash[doc_id] = item
+                timer = Timer(30, expire, args=(doc_id, item))
+                timer.daemon = True
+                timer.start()
+        return {"undo_seconds": 20}
+
+    @api.post("/{doc_id}/restore")
+    def restore_document(doc_id: str) -> dict[str, Any]:
+        with processing:
+            if doc_id in trash:
+                store.items[doc_id] = trash.pop(doc_id)
+            return store.get(doc_id)["result"]
 
     @api.post("/{doc_id}/reprocess")
     def reprocess(doc_id: str, doc_type: str | None = None, llm: bool | None = None) -> dict[str, Any]:
@@ -56,7 +112,9 @@ def router(app: AppState) -> APIRouter:
         if not doc_type and item.get("result", {}).get("doc_type"):
             doc_type = item["result"]["doc_type"]
         try:
-            app.remember(doc_id, app.processor.process_pdf(item["path"], doc_type, llm))
+            with processing:
+                processor = app.processor
+                app.remember(doc_id, processor.process_pdf(item["path"], doc_type, llm), processor)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"LLM: {exc}") from exc
         return item["result"]
@@ -82,7 +140,7 @@ def router(app: AppState) -> APIRouter:
         return FileResponse(store.get(doc_id)["path"], media_type="application/pdf", headers={"Content-Disposition": "inline"})
 
     @api.get("/{doc_id}/pages")
-    def page_count(doc_id: str) -> dict[str, int]:
+    def page_count(doc_id: str) -> dict[str, Any]:
         """Number of pages of the stored PDF."""
         import pypdfium2 as pdfium
 
@@ -92,9 +150,12 @@ def router(app: AppState) -> APIRouter:
         if "pages" not in item:
             with PDFIUM_LOCK:
                 document = pdfium.PdfDocument(str(item["path"]))
-                item["pages"] = len(document)
-                document.close()
-        return {"pages": item["pages"]}
+                try:
+                    item["page_sizes"] = [document.get_page_size(i) for i in range(len(document))]
+                    item["pages"] = len(document)
+                finally:
+                    document.close()
+        return {"pages": item["pages"], "sizes": item["page_sizes"]}
 
     @api.get("/{doc_id}/pages/{number}.png")
     def page_image(doc_id: str, number: int) -> Response:

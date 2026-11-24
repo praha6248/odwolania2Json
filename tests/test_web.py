@@ -110,3 +110,33 @@ def test_windowed_process_gets_streams_for_logging(tmp_path, monkeypatch):
     uvicorn.Config(lambda scope: None, log_level="warning").configure_logging()
     print("ok")
     assert "ok" in log.read_text(encoding="utf-8")
+
+
+def test_upload_replays_only_the_same_payload(monkeypatch):
+    monkeypatch.setenv("O2J_NO_UPDATE_CHECK", "1")
+    client = TestClient(create_app())
+    pdf = FIXTURES / "przyklad_07" / "potwierdzenie_przelewu.pdf"
+    files = {"files": (pdf.name, pdf.read_bytes(), "application/pdf")}
+    headers = {"Idempotency-Key": "retry-1"}
+    first = client.post("/api/documents", files=files, headers=headers).json()
+    assert client.post("/api/documents", files=files, headers=headers).json() == first
+    different = {"files": (pdf.name, b"different contents", "application/pdf")}
+    assert client.post("/api/documents", files=different, headers=headers).status_code == 409
+    assert len(client.get("/api/documents").json()) == 1
+
+
+def test_restore_preserves_manual_correction_and_preview(monkeypatch):
+    monkeypatch.setenv("O2J_NO_UPDATE_CHECK", "1")
+    client = TestClient(create_app())
+    pdf = FIXTURES / "przyklad_07" / "odwolanie.pdf"
+    doc = client.post("/api/documents", files={"files": (pdf.name, pdf.read_bytes())}).json()[0]
+    url = f"/api/documents/{doc['id']}"
+    edited = client.put(f"{url}/fields/czynnosc_powod_id", json={"value": "9"}).json()
+    assert client.post(f"{url}/trash").is_success
+    assert client.get("/api/documents").json() == []
+    assert client.get("/api/cases").json() == []
+    assert client.get(f"{url}/pdf").status_code == 404
+    assert client.post(f"{url}/restore").json() == edited
+    manifest = client.get(f"{url}/pages").json()
+    assert len(manifest["sizes"]) == manifest["pages"]
+    assert all(w > 0 and h > 0 for w, h in manifest["sizes"])
